@@ -1,0 +1,9 @@
+version: "3.3"
+services:
+  pandare:
+    image: pandare/panda
+    command: /bin/sh -c "python3 /addon/main.py"
+    volumes:
+      - "./dev:/addon"
+      - "./payload:/payload"
+      - "./.panda:/root/.panda"
