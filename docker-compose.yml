@@ -3,6 +3,8 @@ services:
   pandare:
     image: pandare/panda
     command: /bin/sh -c "python3 /addon/main.py"
+    #command: /bin/sh -c "python3 /addon/run_panda.py"
+    #command: /bin/sh -c "python3 /addon/read_replay.py"
     volumes:
       - "./dev:/addon"
       - "./payload:/payload"

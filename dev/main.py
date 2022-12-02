@@ -1,75 +1,43 @@
-import string
-import time
-from pandare import Panda
-panda = Panda(qcow='/root/.panda/vm2.qcow2', arch="x86_64", mem="1G", os="windows-64-10")
-
-def send_command(p, cmd):
-    keymap = {
-        '-': 'minus',
-        '=': 'equal',
-        '[': 'bracket_left',
-        ']': 'bracket_right',
-        ';': 'semicolon',
-        '\'': 'apostrophe',
-        '\\': 'backslash',
-        ',': 'comma',
-        '.': 'dot',
-        '/': 'slash',
-        '*': 'asterisk',
-        ' ': 'spc',
-        '_': 'shift-minus',
-        '+': 'shift-equal',
-        '{': 'shift-bracket_left',
-        '}': 'shift-bracket_right',
-        ':': 'shift-semicolon',
-        '"': 'shift-apostrophe',
-        '|': 'shift-backslash',
-        '<': 'shift-comma',
-        '>': 'shift-dot',
-        '?': 'shift-slash',
-        '\n': 'ret',
-    }
-
-    for key in cmd:
-        if key in string.ascii_uppercase:
-            os_key = 'shift-' + key.lower()
-        else:
-            os_key = keymap.get(key, key)
-        p.run_monitor_cmd("sendkey {}".format(os_key))
-        time.sleep(.5)
-    p.run_monitor_cmd("sendkey ret")
+from run_panda import runpd
+import os
+import subprocess
+import json
+from multiprocessing import Queue, Process
 
 
-@panda.cb_virt_mem_after_write
-def virt_mem_after_write(env, pc, addr, size, buf):
-    pc = panda.current_pc(cpustate)
-    print("About to run the block at 0x{:x}".format(pc))
-    print(size)
+if __name__ == "__main__":
+    print("++ Launching")
+    result = {True: [], False: []}
+    for malware_sample in os.listdir("/payload"):
+        is_packed = False
+        memory_write_list = None
+        while memory_write_list is None:
+            print("  -- Processing file '{}'".format(malware_sample), flush=True)
+            print("    -- Creating ISO", flush=True)
+            subprocess.check_call(["genisoimage", "-max-iso9660-filenames", "-RJ", "-o", "payload.iso", "/payload/{}".format(malware_sample)])
+            print("    -- Running PANDA-RE", flush=True)
 
+            """queue = Queue()
+            process = Process(target=runpd, args=(queue, malware_sample,))
+            process.start()
+            memory_write_list = queue.get()
+            process.join()"""
 
-@panda.queue_blocking
-def run_cmd():
-    #print(panda.revert_sync("prompt2"))
-    #panda.copy_to_guest("payload")
-    panda.load_plugin("osi")
-    panda.load_plugin("osi-test")
-    panda.load_plugin("wintrospection")
-    panda.enable_memcb()
-    panda.run_monitor_cmd("loadvm prompt2")
-    panda.run_monitor_cmd("change ide1-cd0 payload.iso")
-    time.sleep(3)
-    panda.run_monitor_cmd("sendkey esc")
-    send_command(panda, "copy D:\\main.exe C:\\Users\\Malware\\Desktop\\main.exe")
-    time.sleep(5)
-    #panda.run_monitor_cmd('begin_record /addon/test')
-    send_command(panda, "start C:\\Users\\Malware\\Desktop\\main.exe")
-    time.sleep(10)
-    #panda.run_monitor_cmd('end_record')
-    panda.end_analysis()
+            memory_write_list = subprocess.check_output(["python3", "/addon/run_panda.py", malware_sample]).decode()#.split("\n")[-1]
+            if memory_write_list is None:
+                print("  -- An error occurred, retrying...")
+            else:
+                #memory_write_list = json.loads(memory_write_list)
+                print(type(memory_write_list))
+                if len(memory_write_list) > 0:
+                    # TODO: Check memory consecutive
+                    is_packed = True
+        result[is_packed].append(malware_sample)
+    print("++ Finished", flush=True)
 
+    # TODO: Show results
+    total_analyzed = len(result[True])+len(result[False])
+    percent_packed = len(result[True])/total_analyzed
+    percent_not_packed = len(result[False])/total_analyzed
+    print("*** % packed: {}\n*** % non-packed: {}".format(percent_packed, percent_not_packed), flush=True)
 
-# Start the guest
-panda.run()
-#run_cmd()
-#panda.run_replay("/addon/test")
-print("FINISHED")

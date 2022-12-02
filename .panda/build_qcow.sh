@@ -1,10 +1,9 @@
-#wget https://az792536.vo.msecnd.net/vms/VMBuild_20190311/VirtualBox/MSEdge/MSEdge.Win10.VirtualBox.zip
-wget https://aka.ms/windev_VM_virtualbox
-unzip windev_VM_virtualbox
-rm windev_VM_virtualbox
-tar -xvf WinDev2210Eval.ova WinDev2210Eval-disk001.vmdk
+wget https://az792536.vo.msecnd.net/vms/VMBuild_20150916/VirtualBox/IE8/IE8.Win7.VirtualBox.zip
+unzip IE8.Win7.VirtualBox.zip
+rm IE8.Win7.VirtualBox.zip
+tar -xvf "IE8 - Win7.ova" "IE8 - Win7-disk1.vmdk"
 #sudo apt install qemu-utils
-rm WinDev2210Eval.ova
-qemu-img convert -O qcow2 WinDev2210Eval-disk001.vmdk win10.qcow2
-chmod +x ./win10.qcow2
-rm WinDev2210Eval-disk001.vmdk
+rm "IE8 - Win7.ova"
+qemu-img convert -O qcow2 "IE8 - Win7-disk1.vmdk" win7.qcow2
+chmod +x ./win7.qcow2
+rm "IE8 - Win7-disk1.vmdk"
