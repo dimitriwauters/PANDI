@@ -1,0 +1,10 @@
+version: "3.3"
+services:
+  pandare:
+    image: pandare/panda
+    command: /bin/sh -c "mkdir -p /replay && python3 /addon/main.py debug=True,executable=KeePass.exe"
+    volumes:
+      - "./dev:/addon"
+      - "./payload:/payload"
+      - "./.panda:/root/.panda"
+      - "./.debug:/debug"
