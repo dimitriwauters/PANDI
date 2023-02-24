@@ -1,10 +1,16 @@
 version: "3.3"
 services:
   pandare:
-    image: pandare/panda
-    command: /bin/sh -c "mkdir -p /replay && python3 /addon/main.py debug=True,executable=KeePass.exe"
+    build:
+      context: .
+      dockerfile: Dockerfile
+    #command: /bin/sh -c "mkdir -p /replay && python3 /addon/main.py --debug --executable=upx_ADExplorer.exe"
+    command: /bin/sh -c "python3 /addon/read_replay.py --debug --entropy"
+    ports:
+      - "4443:5900"
     volumes:
       - "./dev:/addon"
       - "./payload:/payload"
       - "./.panda:/root/.panda"
       - "./.debug:/debug"
+      - "./replay:/replay"

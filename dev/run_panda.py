@@ -1,6 +1,7 @@
 import string
 import time
 import sys
+import os
 
 from pandare import Panda, panda_expect
 
@@ -44,6 +45,7 @@ def send_command(p, cmd):
         time.sleep(.25)
     p.run_monitor_cmd("sendkey ret")
 
+
 @panda.queue_blocking
 def run_cmd():
     panda.run_monitor_cmd("change ide1-cd0 /payload.iso")
@@ -59,14 +61,13 @@ def run_cmd():
     panda.end_analysis()
 
 
-def runpd(malware):
-    global malware_sample
-    malware_sample = malware
-    panda.run()
-
-
 if __name__ == "__main__":
     if len(sys.argv) > 1:
-        runpd(sys.argv[1])
+        malware_sample = sys.argv[1]
+        try:
+            os.remove("/replay/sample")
+        except OSError:
+            pass
+        panda.run()
 
 
