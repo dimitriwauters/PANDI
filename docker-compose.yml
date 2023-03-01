@@ -2,7 +2,7 @@ version: "3.3"
 services:
   pandare:
     build:
-      context: .
+      context: ./docker
       dockerfile: Dockerfile
     volumes:
       - "./payload:/payload"

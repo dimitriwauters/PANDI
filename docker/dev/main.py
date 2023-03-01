@@ -3,61 +3,58 @@ import subprocess
 import json
 import sys
 import time
-from argparse import ArgumentParser
-from utility import write_debug_file
+from utility import write_debug_file, write_output_file
 
-DEBUG = False
-FORCE_MALWARE = None
 MAX_TRIES = 3
 
 entropy_activated = True
 memcheck_activated = False
 
 
+def print_info(text):
+    if not is_silent:
+        print(text, flush=True)
+
+
 if __name__ == "__main__":
-    parser = ArgumentParser()
-    parser.add_argument("--silent", action='store_true', help="only print the result in JSON format", default=False)
-    parser.add_argument("--debug", action='store_true', help="activate verbose mode", default=False)
-    parser.add_argument("--executable", type=str, help="force the selection of one software", default=None)
-    args = parser.parse_args()
+    is_silent = os.getenv("panda_silent", default=False) == "True"
+    is_debug = os.getenv("panda_debug", default=False) == "True"
+    force_executable = os.getenv("panda_executable", default=None)
+    if force_executable == "None":
+        force_executable = None
 
-    DEBUG = args.debug
-    if DEBUG:
-        print("DEBUGGING ACTIVATED")
-    FORCE_MALWARE = args.executable
-    if FORCE_MALWARE is not None:
-        print(f"MALWARE ANALYSED: {FORCE_MALWARE}")
+    if is_debug:
+        print_info("DEBUGGING ACTIVATED")
+    if force_executable is not None:
+        print_info(f"MALWARE ANALYSED: {force_executable}")
 
-    print("++ Launching")
+    print_info("++ Launching")
     result = {True: [], False: []}
-    if FORCE_MALWARE is None:
+    if force_executable is None:
         files_to_analyse = os.listdir("/payload")
     else:
-        files_to_analyse = [FORCE_MALWARE]
+        files_to_analyse = [force_executable]
     for malware_sample in files_to_analyse:
         if ".exe" in malware_sample:
             is_packed = False
             panda_output = None
-            print(f"  -- Processing file '{malware_sample}'", flush=True)
+            print_info(f"  -- Processing file '{malware_sample}'")
             for i in range(MAX_TRIES):
                 panda_run_output, panda_replay_output = None, None
-                print("    -- Creating ISO", flush=True)
+                print_info("    -- Creating ISO")
                 subprocess.run(["genisoimage", "-max-iso9660-filenames", "-RJ", "-o", "payload.iso", f"/payload/{malware_sample}"], capture_output=True)
                 try:
-                    print("    -- Running PANDA", flush=True)
+                    print_info("    -- Running PANDA")
                     panda_run_output = subprocess.run(["python3", "/addon/run_panda.py", malware_sample], capture_output=True)
                     time.sleep(2)
-                    print("    -- Analysing PANDA output (might take a while)", flush=True)
-                    replay_cmd = f"python3 /addon/read_replay.py {'--debug' if DEBUG else ''} " \
-                                 f"{'--memcheck' if memcheck_activated else ''} " \
-                                 f"{'--entropy' if entropy_activated else ''}"
-                    panda_replay_output = subprocess.run(replay_cmd.strip().split(), capture_output=True)
-                    if DEBUG:
+                    print_info("    -- Analysing PANDA output (might take a while)")
+                    panda_replay_output = subprocess.run(["python3", "/addon/read_replay.py"], capture_output=True)
+                    if is_debug:
                         write_debug_file(malware_sample, "run_panda", panda_run_output.stdout.decode())
                         write_debug_file(malware_sample, "read_replay", panda_replay_output.stdout.decode())
                 except subprocess.CalledProcessError as e:
-                    print("    !! An error occurred when trying to execute PANDA:")
-                    print(e.stderr.decode())
+                    print_info("    !! An error occurred when trying to execute PANDA:")
+                    print_info(e.stderr.decode())
                     sys.exit(e.returncode)
 
                 with open("replay_result.txt", "r") as file:
@@ -65,7 +62,7 @@ if __name__ == "__main__":
                 if panda_output != "ERROR":
                     break
                 else:
-                    print(f"  !! An error occurred when recovering the output of PANDA, retrying... ({i+1} of {MAX_TRIES})\n")
+                    print_info(f"  !! An error occurred when recovering the output of PANDA, retrying... ({i+1} of {MAX_TRIES})\n")
 
             if panda_output:
                 panda_output_dict = json.loads(panda_output.replace("'", "\""))
@@ -78,6 +75,7 @@ if __name__ == "__main__":
                             addr = elem[1] % 134  # Modulo x86, the length of an instruction
                             print(addr)"""
                         is_packed = True
+                    write_output_file(malware_sample, is_packed, "memcheck", memory_write_list)
                     result[is_packed].append(malware_sample)
                 if entropy_activated:
                     entropy = panda_output_dict["entropy"]
@@ -97,16 +95,16 @@ if __name__ == "__main__":
                             has_initial_eop = True
                         if header_name == entropy_unpacked_oep[0]:
                             has_unpacked_eop = True
-                        write_debug_file(malware_sample, f"{header_name}_entropy", f"{entropy_val[header_name][0]}\n{entropy_val[header_name][1]}\n{has_initial_eop}-{entropy_initial_oep[1]}\n{has_unpacked_eop}-{entropy_unpacked_oep[1]}")
+                        write_output_file(malware_sample, is_packed, f"{header_name}_entropy", f"{entropy_val[header_name][0]}\n{entropy_val[header_name][1]}\n{has_initial_eop}-{entropy_initial_oep[1]}\n{has_unpacked_eop}-{entropy_unpacked_oep[1]}")
                 result[is_packed].append(malware_sample)
-                print("      -- The result of the analysis is: {}\n".format("PACKED" if is_packed else "NOT-PACKED"))
-    print("++ Finished", flush=True)
+                print_info("      -- The result of the analysis is: {}\n".format("PACKED" if is_packed else "NOT-PACKED"))
+    print_info("++ Finished")
 
     # Show results
     total_analyzed = len(result[True])+len(result[False])
     percent_packed = len(result[True])/total_analyzed
     percent_not_packed = len(result[False])/total_analyzed
-    print("*** % packed: {}\n*** % non-packed: {}".format(percent_packed, percent_not_packed), flush=True)
-    print("*** Packed list: {}".format(result[True]))
-    print("*** Non-Packed list: {}".format(result[False]))
+    print_info("*** % packed: {}\n*** % non-packed: {}".format(percent_packed, percent_not_packed))
+    print_info("*** Packed list: {}".format(result[True]))
+    print_info("*** Non-Packed list: {}".format(result[False]))
 

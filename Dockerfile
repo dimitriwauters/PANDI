@@ -1,7 +1,7 @@
 FROM pandare/panda
 
-COPY ./dev /addon
-COPY ./.panda /root/.panda
+COPY docker/dev /addon
+COPY docker/.panda /root/.panda
 RUN mkdir /replay
 RUN mkdir /payload
 

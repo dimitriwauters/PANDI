@@ -1,4 +1,5 @@
 from scipy.stats import entropy
+import os
 import pefile
 
 
@@ -77,4 +78,13 @@ class EntropyAnalysis:
 
 def write_debug_file(file_name, process_name, process_output):
     with open(f"/debug/{file_name.split('.exe')[0]}_{process_name}_exec.txt", "w") as file:
+        file.write(process_output)
+
+
+def write_output_file(file_name, is_packed, exec_type, process_output):
+    name = file_name.split('.exe')[0]
+    folder_path = f"/output/{'packed' if is_packed else 'not-packed'}/{name}"
+    if not os.path.isdir(folder_path):
+        os.makedirs(folder_path)
+    with open(f"{folder_path}/{exec_type}.txt", "w") as file:
         file.write(process_output)

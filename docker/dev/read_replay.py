@@ -1,7 +1,7 @@
 import cffi
-from argparse import ArgumentParser
 from pandare import Panda, panda_expect
 from utility import EntropyAnalysis
+import os
 
 ffi = cffi.FFI()
 panda = Panda(qcow='/root/.panda/vm.qcow2', mem="3G", os_version="windows-32-7sp0", extra_args="-nographic -loadvm 1")
@@ -11,25 +11,13 @@ malware_pid = set()
 memory_write_exe_list = {}
 memory_write_list = {}
 
-parser = ArgumentParser()
-parser.add_argument("--debug", action='store_true', help="activate verbose mode", default=False)
-parser.add_argument("--force_complete_replay", action='store_true', help="read the replay until the end", default=False)
-parser.add_argument("--max_memory_write_exe_list_length", type=int, help="maximum length of the returned list before exiting", default=1000)
-parser.add_argument("--entropy_granularity", type=int, help="number of basic blocks between samples. Lower numbers result in higher run times", default=1000)
-parser.add_argument("--max_entropy_list_length", type=int, help="maximum length of entropy list before exiting", default=0)
-
-parser.add_argument("--memcheck", action='store_true', help="activate memory write and executed detection", default=False)
-parser.add_argument("--entropy", action='store_true', help="activate entropy analysis", default=False)
-args = parser.parse_args()
-
-force_complete_replay = args.force_complete_replay
-max_memory_write_exe_list_length = args.max_memory_write_exe_list_length
-entropy_granularity = args.entropy_granularity
-max_entropy_list_length = args.max_entropy_list_length
-is_debug = args.debug
-
-entropy_activated = args.entropy
-memcheck_activated = args.memcheck
+force_complete_replay = os.getenv("panda_force_complete_replay", default=False) == "True"
+max_memory_write_exe_list_length = int(os.getenv("panda_max_memory_write_exe_list_length", default=1000))
+entropy_granularity = int(os.getenv("panda_entropy_granularity", default=1000))
+max_entropy_list_length = int(os.getenv("panda_max_entropy_list_length", default=0))
+is_debug = os.getenv("panda_debug", default=False) == "True"
+entropy_activated = os.getenv("panda_entropy", default=False) == "True"
+memcheck_activated = os.getenv("panda_memcheck", default=False) == "True"
 
 block_num = entropy_granularity
 entropy_analysis = EntropyAnalysis(panda)
@@ -135,7 +123,7 @@ def asid_changed(env, old_asid, new_asid):
 
 
 if __name__ == "__main__":
-    result = {"memory_write_exe_list": "", "entropy": "", "entropy_oep": ""}
+    result = {"memory_write_exe_list": "", "entropy": "", "entropy_initial_oep": "", "entropy_unpacked_oep": ""}
     if entropy_activated or memcheck_activated:
         panda.run_replay("/replay/sample")
         result["memory_write_exe_list"] = memory_write_exe_list

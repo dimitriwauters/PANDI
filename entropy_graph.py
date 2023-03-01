@@ -7,8 +7,9 @@ if __name__ == "__main__":
     if len(sys.argv) > 1:
         name = sys.argv[1]
         section = sys.argv[2]
+        is_packed = sys.argv[3] == "True"
 
-        with open(f"./.debug/{name}_{section}_entropy_exec.txt", 'r') as file:
+        with open(f"./output/{'packed' if is_packed else 'not-packed'}/{name}/{section}_entropy.txt", 'r') as file:
             x = json.loads(file.readline().replace("'", ""))
             y = json.loads(file.readline())
             initial_eop = file.readline().split('-')

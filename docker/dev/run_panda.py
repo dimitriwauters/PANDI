@@ -1,7 +1,6 @@
 import string
 import time
 import sys
-import os
 
 from pandare import Panda, panda_expect
 
@@ -64,10 +63,6 @@ def run_cmd():
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         malware_sample = sys.argv[1]
-        try:
-            os.remove("/replay/sample")
-        except OSError:
-            pass
         panda.run()
 
 
