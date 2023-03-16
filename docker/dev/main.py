@@ -57,12 +57,13 @@ if __name__ == "__main__":
                     print_info(e.stderr.decode())
                     sys.exit(e.returncode)
 
-                with open("replay_result.txt", "r") as file:
-                    panda_output = file.read()
+                if os.path.isfile("replay_result.txt"):
+                    with open("replay_result.txt", "r") as file:
+                        panda_output = file.read()
                 if panda_output != "ERROR":
                     break
-                else:
-                    print_info(f"  !! An error occurred when recovering the output of PANDA, retrying... ({i+1} of {MAX_TRIES})\n")
+
+                print_info(f"  !! An error occurred when recovering the output of PANDA, retrying... ({i+1} of {MAX_TRIES})\n")
 
             if panda_output:
                 panda_output_dict = json.loads(panda_output.replace("'", "\""))

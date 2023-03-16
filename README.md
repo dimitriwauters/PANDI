@@ -34,12 +34,22 @@ options:
 ```
 
 ### docker-compose
-TODO
+TODO  
+https://uclouvain-my.sharepoint.com/:u:/g/personal/d_wauters_uclouvain_be/EZXz0Kf1U_VEhQSddwlPOI4B_oKqEwY-HmxC5Nv6Wd4WSA?e=09Zg7E
 
 ## Usage
 The two possible usages of this software can be combined but at least one must be enabled.
 ### Memory Write&Execution Detection
 This option must be activated with the ```--memcheck``` parameter on ```launch.py``` or by modifying the ```docker-compose.yml``` file by adding ```panda_memcheck=True``` in the environment variables.
 
+TODO
+
 ### Entropy Analysis
 This option must be activated with the ```--entropy``` parameter on ```launch.py``` or by modifying the ```docker-compose.yml``` file by adding ```panda_entropy=True``` in the environment variables.
+
+TODO
+
+## Build VM from scratch
+In case if you want to build your own VM or the given link is broken, this section will present how to rebuild the VM for PANDA.
+
+TODO

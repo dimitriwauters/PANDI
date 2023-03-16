@@ -4,7 +4,8 @@ from utility import EntropyAnalysis
 import os
 
 ffi = cffi.FFI()
-panda = Panda(qcow='/root/.panda/vm.qcow2', mem="3G", os_version="windows-32-7sp0", extra_args="-nographic -loadvm 1")
+panda = Panda(qcow='/root/.panda/vm.qcow2', mem="3G", os_version="windows-32-7sp0", extra_args="-nographic -loadvm 1") # -panda syscalls2:load-info=true
+panda.load_plugin("syscalls2", {"load-info": True})
 
 sample_asid = None
 malware_pid = set()
@@ -48,10 +49,11 @@ def before_block_exec(env, tb):
             if panda.current_asid(env) == sample_asid:
                 if not entropy_analysis.headers:
                     entropy_analysis.init_headers(env)
-                if entropy_analysis.headers and block_num > entropy_granularity:
+                pc = panda.arch.get_pc(env)
+                if entropy_analysis.headers and (block_num > entropy_granularity or pc in entropy_analysis.imports.values()):
                     memory = entropy_analysis.read_memory(env)
                     if memory:
-                        pc = panda.arch.get_pc(env)
+                        #pc = panda.arch.get_pc(env)
                         current_section = None
                         entropy_analysis.analyse_entropy(env, memory)
                         for header_name in entropy_analysis.headers:
@@ -73,8 +75,11 @@ def before_block_exec(env, tb):
                         block_num = 0
                         if max_entropy_list_length != 0 and len(entropy_analysis.entropy) >= max_entropy_list_length:
                             entropy_activated = False
+                            for name in entropy_analysis.imports:
+                                imp = entropy_analysis.imports[name]
+                                print(name, hex(imp))
                         if is_debug:
-                            print(f"(BLOCK_EXEC) MEASURED ENTROPY AT PC {hex(pc)} (Section: {current_section} - Inital EP Section: {entropy_analysis.initial_EP_section[0]})", flush=True)
+                            print(f"(BLOCK_EXEC) MEASURED ENTROPY AT PC {hex(pc)} (Section: {current_section})", flush=True)
                 block_num += 1
         # =============================== EXEC WRITE DETECTION ===============================
         if memcheck_activated:
@@ -98,6 +103,24 @@ def before_block_exec(env, tb):
                 panda.end_replay()
             except:
                 pass
+
+
+@panda.ppp("syscalls2", "on_all_sys_enter2", autoload=False)
+def on_all_sys_enter2(env, pc, call, rp):
+    if panda.current_asid(env) == sample_asid:
+        if call != panda.ffi.NULL:
+            name = panda.ffi.string(call.name).decode()
+            for arg_idx in range(call.nargs):
+                try:
+                    arg_val = panda.arch.get_arg(env, arg_idx + 1, convention='syscall')
+                    print(name, panda.ffi.string(call.argn[arg_idx]), arg_val, hex(arg_val), flush=True)
+                except Exception:
+                    pass
+        else:  # Not known by syscalls2 plugin
+            args = panda.ffi.cast('target_ulong**', rp.args)
+            addr = int(panda.ffi.cast('unsigned int', args))
+            print(addr)
+
 
 
 @panda.cb_asid_changed()
@@ -124,11 +147,15 @@ def asid_changed(env, old_asid, new_asid):
 
 if __name__ == "__main__":
     result = {"memory_write_exe_list": "", "entropy": "", "entropy_initial_oep": "", "entropy_unpacked_oep": ""}
-    if entropy_activated or memcheck_activated:
-        panda.run_replay("/replay/sample")
-        result["memory_write_exe_list"] = memory_write_exe_list
-        result["entropy"] = entropy_analysis.entropy
-        result["entropy_initial_oep"] = entropy_analysis.initial_EP_section
-        result["entropy_unpacked_oep"] = entropy_analysis.unpacked_EP_section
-    with open("replay_result.txt", "w") as file:
-        file.write(str(result))
+    try:
+        if entropy_activated or memcheck_activated:
+            panda.run_replay("/replay/sample")
+            result["memory_write_exe_list"] = memory_write_exe_list
+            result["entropy"] = entropy_analysis.entropy
+            result["entropy_initial_oep"] = entropy_analysis.initial_EP_section
+            result["entropy_unpacked_oep"] = entropy_analysis.unpacked_EP_section
+    except Exception as e:
+        print(e)
+    finally:
+        with open("replay_result.txt", "w") as file:
+            file.write(str(result))

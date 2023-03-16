@@ -6,3 +6,5 @@ services:
       dockerfile: Dockerfile
     volumes:
       - "./payload:/payload"
+    environment:
+      - panda_silent=False

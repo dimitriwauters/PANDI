@@ -8,26 +8,39 @@ class EntropyAnalysis:
         self.panda = panda
         self.headers = {}  # {"UPX0": (0x401000, 0x401000), ...}
         self.entropy = {}  # {511312271: {"UPX0": 0.7751087, "TOTAL: 0.7751087}, ...}
+        self.higher_section_addr = None
         self.initial_EP = None
         self.initial_EP_section = ['', 0]
         self.unpacked_EP_section = ['', 0]
+        self.imports = {}
+        self.pe = None
 
     def init_headers(self, cpu):
-        headers = (0x400000, 0x401000)
-        size = headers[1] - headers[0]
+        # Flags: IMAGE_SCN_CNT_UNINITIALIZED_DATA, IMAGE_SCN_MEM_EXECUTE, IMAGE_SCN_MEM_READ, IMAGE_SCN_MEM_WRITE
         try:
-            m = self.panda.virtual_memory_read(cpu, headers[0], size)
-            if m:
-                pe = pefile.PE(data=m)
-                entry_point = pe.OPTIONAL_HEADER.AddressOfEntryPoint
-                for section in pe.sections:
-                    start = headers[0] + section.VirtualAddress
-                    end = start + section.Misc_VirtualSize
-                    name = section.Name.decode().replace('\x00', '')
-                    self.headers[name] = (start, end)
-                    if section.contains_rva(entry_point):
-                        self.initial_EP_section[0] = name
-                        self.initial_EP = 0x400000 + entry_point
+            self.pe = pefile.PE(f"/payload/{'upx_ADExplorer.exe'}")
+            entry_point = self.pe.OPTIONAL_HEADER.AddressOfEntryPoint
+            headers = (self.pe.OPTIONAL_HEADER.ImageBase, self.pe.OPTIONAL_HEADER.ImageBase + self.pe.OPTIONAL_HEADER.SizeOfHeaders)
+            for section in self.pe.sections:
+                start = headers[0] + section.VirtualAddress
+                end = start + section.Misc_VirtualSize
+                name = section.Name.decode().replace('\x00', '')
+                self.headers[name] = (start, end)
+                self._compute_entropy(0, name, section.get_data())
+                if section.contains_rva(entry_point):
+                    self.initial_EP_section[0] = name
+                    self.initial_EP = headers[0] + entry_point
+            self.pe.parse_data_directories()
+            for entry in self.pe.DIRECTORY_ENTRY_IMPORT:
+                #print(entry.dll)
+                print(entry.dll, entry.struct.FirstThunk + headers[0], entry.__dict__, flush=True)
+                for imp in entry.imports:
+                    #self.imports[imp.name] = int(imp.address, base=16) + 0x200
+                    self.imports[imp.name] = imp.address
+                    print("\t", imp.name, imp.address, hex(imp.address), flush=True)
+                    #print(hex(imp.address), imp.name, hex(imp.struct_table.Function), imp.__dict__, flush=True)
+            """for exp in pe.DIRECTORY_ENTRY_EXPORT.symbols:
+                print(hex(pe.OPTIONAL_HEADER.ImageBase + exp.address), exp.name, exp.ordinal, flush=True)"""
         except ValueError as e:
             print(e, flush=True)
 
@@ -46,6 +59,26 @@ class EntropyAnalysis:
                     break
                 except ValueError:
                     size -= 0x1000
+            if header_name == "UPX0" and size == mapping_size and self.unpacked_EP_section[0] == "UPX0":
+                if not os.path.isfile("/addon/test.exe"):
+                    with open("/addon/test.exe", 'wb') as file:
+                        file.write(m["UPX0"])
+        for import_name in self.imports:
+            if self.imports[import_name] < self.get_higher_section_addr():
+                try:
+                    a = self.panda.virtual_memory_read(cpu, self.imports[import_name], 4)
+                    to_hex = int(a[::-1].hex(), base=16)
+                    if to_hex > self.imports[import_name]:
+                        self.imports[import_name] = to_hex
+                except ValueError:
+                    pass
+            """else:
+                try:
+                    a = self.panda.virtual_memory_read(cpu, self.imports[import_name] - 32, 64)
+                    print(a, flush=True)
+                except ValueError as e:
+                    print(e, flush=True)
+                    pass"""
         return m
 
     def analyse_entropy(self, cpu, m):
@@ -54,26 +87,29 @@ class EntropyAnalysis:
             memory = m[header_name]
             if memory:
                 whole_m += memory
-                self._compute_entropy(cpu, header_name, memory)
+                self._compute_entropy(cpu.rr_guest_instr_count, header_name, memory)
         if whole_m:
-            self._compute_entropy(cpu, "TOTAL", whole_m)
+            self._compute_entropy(cpu.rr_guest_instr_count, "TOTAL", whole_m)
 
-    def _compute_entropy(self, cpu, header_name, memory):
+    def _compute_entropy(self, instr_count, header_name, memory):
         pk = [memory.count(i) for i in range(256)]
         if sum(pk) != 0:
             text_entropy = entropy(pk, base=2)
-            instr_count = str(cpu.rr_guest_instr_count)
+            instr_count = str(instr_count)
             if instr_count not in self.entropy:
                 self.entropy[instr_count] = {}
             self.entropy[instr_count][header_name] = text_entropy
 
     def get_higher_section_addr(self):
-        higher_addr = 0
-        for header_name in self.headers:
-            section = self.headers[header_name]
-            if section[1] > higher_addr:
-                higher_addr = section[1]
-        return higher_addr
+        if self.higher_section_addr is None:
+            self.higher_section_addr = 0
+            for header_name in self.headers:
+                section = self.headers[header_name]
+                if int(section[1]) > self.higher_section_addr:
+                    self.higher_section_addr = int(section[1])
+            return self.higher_section_addr
+        else:
+            return self.higher_section_addr
 
 
 def write_debug_file(file_name, process_name, process_output):
