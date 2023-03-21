@@ -1,6 +1,7 @@
 import cffi
 from pandare import Panda, panda_expect
 from utility import EntropyAnalysis
+from syscalls import SysCallsInterpreter
 import os
 
 ffi = cffi.FFI()
@@ -22,6 +23,7 @@ memcheck_activated = os.getenv("panda_memcheck", default=False) == "True"
 
 block_num = entropy_granularity
 entropy_analysis = EntropyAnalysis(panda)
+syscall_interpreter = SysCallsInterpreter(panda)
 last_section_executed = None
 
 
@@ -109,18 +111,62 @@ def before_block_exec(env, tb):
 def on_all_sys_enter2(env, pc, call, rp):
     if panda.current_asid(env) == sample_asid:
         if call != panda.ffi.NULL:
-            name = panda.ffi.string(call.name).decode()
+            syscall_name = panda.ffi.string(call.name).decode()
+            """try:
+                a = 0
+                while True:
+                    aaa = panda.arch.get_arg(env, a, convention='cdecl')
+                    # aaa = bytes([elem for elem in rp.args[a]])
+                    bbb = None
+                    if aaa > 0xFFFF:
+                        try:
+                            bbb = panda.virtual_memory_read(env, aaa, 128)
+                        except ValueError:
+                            pass
+                    print(a, aaa, hex(aaa), bbb)
+                    a += 1
+            except Exception:
+                pass"""
             for arg_idx in range(call.nargs):
                 try:
-                    arg_val = panda.arch.get_arg(env, arg_idx + 1, convention='syscall')
-                    print(name, panda.ffi.string(call.argn[arg_idx]), arg_val, hex(arg_val), flush=True)
-                except Exception:
+                    arg_name = panda.ffi.string(call.argn[arg_idx])
+                    arg_val = panda.arch.get_arg(env, arg_idx + 1, convention='cdecl')  # +1 because idx 0 is syscall number
+                    print(syscall_name, call.argt[arg_idx], arg_name, arg_val, hex(arg_val), flush=True)
+                    if arg_val > 0xFFFF:  # probably a pointer
+                        syscall_result = syscall_interpreter.read_syscall(env, syscall_name, arg_name.decode(), arg_val)
+                        print(f"{syscall_name} {arg_name.decode()}: {syscall_result}")
+                        try: # TODO: REMOVE
+                            mem = panda.virtual_memory_read(env, arg_val, 64)
+                            print(mem)
+                        except ValueError:
+                            pass
+                    else:
+                        pass
+                except Exception as e:
+                    print(e, flush=True)
                     pass
         else:  # Not known by syscalls2 plugin
             args = panda.ffi.cast('target_ulong**', rp.args)
             addr = int(panda.ffi.cast('unsigned int', args))
             print(addr)
 
+"""@panda.ppp("syscalls2", "on_NtOpenSection_enter", autoload=False)
+def on_NtOpenSection_enter(env, pc, SectionHandle, DesiredAccess, ObjectAttributes):
+    if panda.current_asid(env) == sample_asid:
+        print("NtOpenSection", hex(SectionHandle), hex(DesiredAccess), hex(ObjectAttributes))
+        ObjectAttributes_object = syscall_interpreter.read_ObjectAttributes(env, ObjectAttributes)
+        dll_name = syscall_interpreter.read_PUNICODE_STRING(env, ObjectAttributes_object["name_addr"]).split(".dll")[0]
+        print(dll_name + ".dll")"""
+
+"""@panda.ppp("syscalls2", "on_NtAllocateVirtualMemory_enter", autoload=False)
+def on_NtAllocateVirtualMemory_enter(env, pc, ProcessHandle, BaseAddress, ZeroBits, RegionSize, AllocationType, Protect):
+    if panda.current_asid(env) == sample_asid:
+        print("NtAllocateVirtualMemory", hex(ProcessHandle), hex(BaseAddress), hex(ZeroBits), hex(RegionSize), hex(AllocationType), hex(Protect))"""
+
+"""@panda.ppp("syscalls2", "on_NtQueryInformationProcess_enter", autoload=False)
+def on_NtQueryInformationProcess_enter(env, pc, ProcessHandle, ProcessInformationClass, ProcessInformation, ProcessInformationLength, ReturnLength):
+    if panda.current_asid(env) == sample_asid:
+        print("NtQueryInformationProcess", hex(ProcessHandle), hex(ProcessInformationClass), hex(ProcessInformation), hex(ProcessInformationLength), hex(ReturnLength))"""
 
 
 @panda.cb_asid_changed()
