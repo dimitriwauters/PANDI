@@ -48,7 +48,7 @@ if __name__ == "__main__":
                     panda_run_output = subprocess.run(["python3", "/addon/run_panda.py", malware_sample], capture_output=True)
                     time.sleep(2)
                     print_info("    -- Analysing PANDA output (might take a while)")
-                    panda_replay_output = subprocess.run(["python3", "/addon/read_replay.py"], capture_output=True)
+                    panda_replay_output = subprocess.run(["python3", "/addon/read_replay.py", malware_sample], capture_output=True)
                     if is_debug:
                         write_debug_file(malware_sample, "run_panda", panda_run_output.stdout.decode())
                         write_debug_file(malware_sample, "read_replay", panda_replay_output.stdout.decode())

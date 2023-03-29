@@ -18,4 +18,4 @@ services:
       - panda_entropy=True
       #- panda_executable=upx_ADExplorer.exe
       #- panda_max_entropy_list_length=50
-    command: "python3 /addon/read_replay.py"
+    command: "python3 /addon/read_replay.py upx_ADExplorer.exe"

@@ -1,13 +1,15 @@
 import cffi
 from pandare import Panda, panda_expect
-from utility import EntropyAnalysis
+from utility import EntropyAnalysis, PEInformations, DynamicLoadedDLL
 from syscalls import SysCallsInterpreter
 import os
+import sys
 
 ffi = cffi.FFI()
 panda = Panda(qcow='/root/.panda/vm.qcow2', mem="3G", os_version="windows-32-7sp0", extra_args="-nographic -loadvm 1") # -panda syscalls2:load-info=true
 panda.load_plugin("syscalls2", {"load-info": True})
 
+malware_sample = ""
 sample_asid = None
 malware_pid = set()
 memory_write_exe_list = {}
@@ -22,9 +24,12 @@ entropy_activated = os.getenv("panda_entropy", default=False) == "True"
 memcheck_activated = os.getenv("panda_memcheck", default=False) == "True"
 
 block_num = entropy_granularity
-entropy_analysis = EntropyAnalysis(panda)
+entropy_analysis = None
 syscall_interpreter = SysCallsInterpreter(panda)
 last_section_executed = None
+
+dynamic_dll = None
+pe_infos = None
 
 
 @panda.cb_virt_mem_after_write(enabled=False)
@@ -49,39 +54,71 @@ def before_block_exec(env, tb):
         if entropy_activated:
             global block_num, last_section_executed
             if panda.current_asid(env) == sample_asid:
-                if not entropy_analysis.headers:
-                    entropy_analysis.init_headers(env)
+                if not pe_infos.headers:
+                    pe_infos.init_headers(entropy_analysis.initial_entropy, dynamic_dll.initial_iat)
                 pc = panda.arch.get_pc(env)
-                if entropy_analysis.headers and (block_num > entropy_granularity or pc in entropy_analysis.imports.values()):
+                if pe_infos.headers and (block_num > entropy_granularity or pc in pe_infos.imports.values() or pc in dynamic_dll.dynamic_dll_methods.values()):
+                    current_position = "Unknown"
+                    if pc in pe_infos.imports.values():  # If current addr correspond to a DLL method call addr
+                        function_name = pe_infos.get_import_name_from_addr(pc).decode()
+                        dynamic_dll.increase_call_nbr(function_name)
+                        current_position = f"IAT_DLL({function_name})"
+                        print("DIDI", function_name, hex(pc))
+                        syscall_result = syscall_interpreter.read_usercall(env, function_name)
+                        if type(syscall_result) != str:
+                            print("\t", syscall_result["name"], hex(syscall_result["addr"]))
+                        if function_name == "GetProcAddress":
+                            dynamic_dll.add_dll_method(syscall_result["name"], syscall_result["addr"])
+                        elif function_name == "LoadLibraryA":
+                            dynamic_dll.add_dll(syscall_result["name"])
+                        """try:
+                            for arg_idx in range(10):
+                                arg_val = panda.arch.get_arg(env, arg_idx, convention='cdecl')
+                                print(arg_val)
+                                if arg_val > 0xFFFF:  # TODO: REMOVE BLOCK
+                                    try:
+                                        mem = panda.virtual_memory_read(env, arg_val, 64)
+                                        print(mem)
+                                    except ValueError:
+                                        pass
+                        except ValueError:
+                            pass"""
+                    elif pc in dynamic_dll.dynamic_dll_methods.values():
+                        function_name = dynamic_dll.get_dll_method_name_from_addr(pc)
+                        dynamic_dll.increase_call_nbr(function_name)
+                        current_position = f"DYNAMIC_DLL({function_name})"
+
                     memory = entropy_analysis.read_memory(env)
                     if memory:
-                        #pc = panda.arch.get_pc(env)
                         current_section = None
                         entropy_analysis.analyse_entropy(env, memory)
-                        for header_name in entropy_analysis.headers:
-                            header = entropy_analysis.headers[header_name]
+                        for header_name in pe_infos.headers:
+                            header = pe_infos.headers[header_name]
                             if header[0] <= pc <= header[1]:
                                 current_section = header_name
                                 break
                         # Update entry point of unpacked code
-                        if entropy_analysis.unpacked_EP_section[1] == 0 and current_section is not None \
-                                and last_section_executed == entropy_analysis.initial_EP_section[0] \
-                                and current_section != entropy_analysis.initial_EP_section[0]:
-                            entropy_analysis.unpacked_EP_section = [current_section, env.rr_guest_instr_count]
+                        if pe_infos.unpacked_EP_section[1] == 0 and current_section is not None \
+                                and last_section_executed == pe_infos.initial_EP_section[0] \
+                                and current_section != pe_infos.initial_EP_section[0]:
+                            pe_infos.unpacked_EP_section = [current_section, env.rr_guest_instr_count]
                         # Update entry point of the packer
-                        if entropy_analysis.initial_EP_section[1] == 0 and current_section is not None \
+                        if pe_infos.initial_EP_section[1] == 0 and current_section is not None \
                                 and last_section_executed is None:
-                            entropy_analysis.initial_EP_section[1] = env.rr_guest_instr_count
-                        if pc <= entropy_analysis.get_higher_section_addr():
+                            pe_infos.initial_EP_section[1] = env.rr_guest_instr_count
+                        if pc <= pe_infos.get_higher_section_addr():
                             last_section_executed = current_section
                         block_num = 0
                         if max_entropy_list_length != 0 and len(entropy_analysis.entropy) >= max_entropy_list_length:
                             entropy_activated = False
-                            for name in entropy_analysis.imports:
-                                imp = entropy_analysis.imports[name]
+                            for name in pe_infos.imports:
+                                imp = pe_infos.imports[name]
                                 print(name, hex(imp))
-                        if is_debug:
-                            print(f"(BLOCK_EXEC) MEASURED ENTROPY AT PC {hex(pc)} (Section: {current_section})", flush=True)
+                        if current_section is not None:
+                            current_position = f"SECTION({current_section})"
+                            dynamic_dll.increase_call_nbr(current_section)
+                    if is_debug:
+                        print(f"(BLOCK_EXEC) MEASURED ENTROPY AT PC {hex(pc)} (Detected position: {current_position})", flush=True)
                 block_num += 1
         # =============================== EXEC WRITE DETECTION ===============================
         if memcheck_activated:
@@ -112,61 +149,25 @@ def on_all_sys_enter2(env, pc, call, rp):
     if panda.current_asid(env) == sample_asid:
         if call != panda.ffi.NULL:
             syscall_name = panda.ffi.string(call.name).decode()
-            """try:
-                a = 0
-                while True:
-                    aaa = panda.arch.get_arg(env, a, convention='cdecl')
-                    # aaa = bytes([elem for elem in rp.args[a]])
-                    bbb = None
-                    if aaa > 0xFFFF:
-                        try:
-                            bbb = panda.virtual_memory_read(env, aaa, 128)
-                        except ValueError:
-                            pass
-                    print(a, aaa, hex(aaa), bbb)
-                    a += 1
-            except Exception:
-                pass"""
             for arg_idx in range(call.nargs):
                 try:
                     arg_name = panda.ffi.string(call.argn[arg_idx])
                     arg_val = panda.arch.get_arg(env, arg_idx + 1, convention='cdecl')  # +1 because idx 0 is syscall number
                     print(syscall_name, call.argt[arg_idx], arg_name, arg_val, hex(arg_val), flush=True)
-                    if arg_val > 0xFFFF:  # probably a pointer
-                        syscall_result = syscall_interpreter.read_syscall(env, syscall_name, arg_name.decode(), arg_val)
-                        print(f"{syscall_name} {arg_name.decode()}: {syscall_result}")
-                        try: # TODO: REMOVE
+                    syscall_result = syscall_interpreter.read_syscall(env, syscall_name, arg_name.decode(), arg_val)
+                    print(f"{syscall_name} {arg_name.decode()}: {syscall_result}")
+                    if syscall_name == "NtOpenSection" and arg_name.decode() == "ObjectAttributes":
+                        dynamic_dll.add_dll(syscall_result)
+                    if arg_val > 0xFFFF:  # TODO: REMOVE BLOCK
+                        try:
                             mem = panda.virtual_memory_read(env, arg_val, 64)
                             print(mem)
                         except ValueError:
                             pass
                     else:
                         pass
-                except Exception as e:
-                    print(e, flush=True)
+                except Exception:
                     pass
-        else:  # Not known by syscalls2 plugin
-            args = panda.ffi.cast('target_ulong**', rp.args)
-            addr = int(panda.ffi.cast('unsigned int', args))
-            print(addr)
-
-"""@panda.ppp("syscalls2", "on_NtOpenSection_enter", autoload=False)
-def on_NtOpenSection_enter(env, pc, SectionHandle, DesiredAccess, ObjectAttributes):
-    if panda.current_asid(env) == sample_asid:
-        print("NtOpenSection", hex(SectionHandle), hex(DesiredAccess), hex(ObjectAttributes))
-        ObjectAttributes_object = syscall_interpreter.read_ObjectAttributes(env, ObjectAttributes)
-        dll_name = syscall_interpreter.read_PUNICODE_STRING(env, ObjectAttributes_object["name_addr"]).split(".dll")[0]
-        print(dll_name + ".dll")"""
-
-"""@panda.ppp("syscalls2", "on_NtAllocateVirtualMemory_enter", autoload=False)
-def on_NtAllocateVirtualMemory_enter(env, pc, ProcessHandle, BaseAddress, ZeroBits, RegionSize, AllocationType, Protect):
-    if panda.current_asid(env) == sample_asid:
-        print("NtAllocateVirtualMemory", hex(ProcessHandle), hex(BaseAddress), hex(ZeroBits), hex(RegionSize), hex(AllocationType), hex(Protect))"""
-
-"""@panda.ppp("syscalls2", "on_NtQueryInformationProcess_enter", autoload=False)
-def on_NtQueryInformationProcess_enter(env, pc, ProcessHandle, ProcessInformationClass, ProcessInformation, ProcessInformationLength, ReturnLength):
-    if panda.current_asid(env) == sample_asid:
-        print("NtQueryInformationProcess", hex(ProcessHandle), hex(ProcessInformationClass), hex(ProcessInformation), hex(ProcessInformationLength), hex(ReturnLength))"""
 
 
 @panda.cb_asid_changed()
@@ -192,16 +193,24 @@ def asid_changed(env, old_asid, new_asid):
 
 
 if __name__ == "__main__":
-    result = {"memory_write_exe_list": "", "entropy": "", "entropy_initial_oep": "", "entropy_unpacked_oep": ""}
-    try:
-        if entropy_activated or memcheck_activated:
-            panda.run_replay("/replay/sample")
-            result["memory_write_exe_list"] = memory_write_exe_list
-            result["entropy"] = entropy_analysis.entropy
-            result["entropy_initial_oep"] = entropy_analysis.initial_EP_section
-            result["entropy_unpacked_oep"] = entropy_analysis.unpacked_EP_section
-    except Exception as e:
-        print(e)
-    finally:
-        with open("replay_result.txt", "w") as file:
-            file.write(str(result))
+    if len(sys.argv) > 1:
+        malware_sample = sys.argv[1]
+        pe_infos = PEInformations(panda, malware_sample)
+        entropy_analysis = EntropyAnalysis(panda, pe_infos)
+        dynamic_dll = DynamicLoadedDLL(panda, pe_infos)
+        result = {"memory_write_exe_list": "", "entropy": "", "entropy_initial_oep": "", "entropy_unpacked_oep": ""}
+        try:
+            if entropy_activated or memcheck_activated:
+                panda.run_replay("/replay/sample")
+                dynamic_dll.get_dynamic_dll()
+                result["memory_write_exe_list"] = memory_write_exe_list
+                result["entropy"] = entropy_analysis.entropy
+                result["entropy_initial_oep"] = pe_infos.initial_EP_section
+                result["entropy_unpacked_oep"] = pe_infos.unpacked_EP_section
+        except Exception as e:
+            print(e)
+        finally:
+            with open("replay_result.txt", "w") as file:
+                file.write(str(result))
+    else:
+        sys.exit(1)
