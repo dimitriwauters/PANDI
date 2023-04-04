@@ -7,8 +7,9 @@ from utility import write_debug_file, write_output_file
 
 MAX_TRIES = 3
 
-entropy_activated = True
-memcheck_activated = False
+entropy_activated = os.getenv("panda_entropy", default=False) == "True"
+memcheck_activated = os.getenv("panda_memcheck", default=False) == "True"
+dll_activated = os.getenv("panda_dll", default=False) == "True"
 
 
 def print_info(text):
@@ -43,19 +44,25 @@ if __name__ == "__main__":
                 panda_run_output, panda_replay_output = None, None
                 print_info("    -- Creating ISO")
                 subprocess.run(["genisoimage", "-max-iso9660-filenames", "-RJ", "-o", "payload.iso", f"/payload/{malware_sample}"], capture_output=True)
+                print_info("    -- Running PANDA")
                 try:
-                    print_info("    -- Running PANDA")
                     panda_run_output = subprocess.run(["python3", "/addon/run_panda.py", malware_sample], capture_output=True)
-                    time.sleep(2)
-                    print_info("    -- Analysing PANDA output (might take a while)")
-                    panda_replay_output = subprocess.run(["python3", "/addon/read_replay.py", malware_sample], capture_output=True)
-                    if is_debug:
-                        write_debug_file(malware_sample, "run_panda", panda_run_output.stdout.decode())
-                        write_debug_file(malware_sample, "read_replay", panda_replay_output.stdout.decode())
                 except subprocess.CalledProcessError as e:
                     print_info("    !! An error occurred when trying to execute PANDA:")
                     print_info(e.stderr.decode())
                     sys.exit(e.returncode)
+                time.sleep(2)
+                print_info("    -- Analysing PANDA output (might take a while)")
+                try:
+                    panda_replay_output = subprocess.run(["python3", "/addon/read_replay.py", malware_sample], capture_output=True)
+                except subprocess.CalledProcessError as e:
+                    print_info("    !! An error occurred when trying to analyse PANDA output:")
+                    print_info(e.stderr.decode())
+                    sys.exit(e.returncode)
+
+                if is_debug:
+                    write_debug_file(malware_sample, "run_panda", panda_run_output.stdout.decode())
+                    write_debug_file(malware_sample, "read_replay", panda_replay_output.stdout.decode())
 
                 if os.path.isfile("replay_result.txt"):
                     with open("replay_result.txt", "r") as file:

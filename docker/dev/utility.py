@@ -99,13 +99,6 @@ class EntropyAnalysis:
                         self.pe_info.imports[import_name] = to_hex
                 except ValueError:
                     pass
-            """else:
-                try:
-                    a = self.panda.virtual_memory_read(cpu, self.imports[import_name] - 32, 64)
-                    print(a, flush=True)
-                except ValueError as e:
-                    print(e, flush=True)
-                    pass"""
         return m
 
     def analyse_entropy(self, cpu, m):
@@ -169,6 +162,7 @@ class DynamicLoadedDLL:
         print(self.iat_dll)
         print(self.loaded_dll)
         print(self.calls_nbr)
+        print(list(self.dynamic_dll_methods.keys))
         return self.loaded_dll
 
     def get_nbr_calls(self, name):

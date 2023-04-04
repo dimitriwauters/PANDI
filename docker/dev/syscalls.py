@@ -43,25 +43,10 @@ class SysCallsInterpreter:
         return self._Protect(env, value)
 
     def read_ObjectAttributes(self, env, addr):
-        """length = int(self.panda.virtual_memory_read(env, addr, 4)[::-1].hex(), base=16)
-        max_length = int(self.panda.virtual_memory_read(env, addr + 4, 4)[::-1].hex(), base=16)
-        if max_length >= length:
-            if max_length == 0:
-                return "NULL"
-            str_addr = int(self.panda.virtual_memory_read(env, addr + 8, 4)[::-1].hex(), base=16)
-            str_content = self.panda.virtual_memory_read(env, str_addr, length * 2)
-            print(str_content)
-            str_valid = str_content.decode("utf-8", "ignore").replace('\x00', '').lower().split(".dll")[0]
-            return str_valid
-        else:
-            return "Error"""""
-
         object_length = self.panda.ffi.cast("unsigned int", int(self.panda.virtual_memory_read(env, addr, 4)[::-1].hex(), base=16))
         if object_length == 0:
             return "NULL"
         handle_addr = int(self.panda.virtual_memory_read(env, addr + 4, 4)[::-1].hex(), base=16)
-        """if handle_addr > 0xFFFF:
-            print(self.panda.virtual_memory_read(env, handle_addr, 64))"""
         name_addr = int(self.panda.virtual_memory_read(env, addr + 8, 4)[::-1].hex(), base=16)
         attributes = self.panda.ffi.cast("unsigned int", int(self.panda.virtual_memory_read(env, addr + 16, 4)[::-1].hex(), base=16))
         return {"object_length": object_length, "handle_addr": handle_addr, "name_addr": name_addr, "attributes": attributes}
@@ -121,3 +106,6 @@ class SysCallsInterpreter:
         except ValueError:
             pass
         return {"name": lpLibFileName_val, "addr": self.panda.arch.get_retval(env)}
+
+    def _LoadLibraryW(self, env):
+        return self._LoadLibraryA(env)

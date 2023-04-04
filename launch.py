@@ -1,9 +1,9 @@
 import subprocess
 import requests
 import signal
-from argparse import ArgumentParser
 import os
 import sys
+from argparse import ArgumentParser
 
 parser = ArgumentParser()
 parser.add_argument("--build", action='store_true', help="rebuild panda image", default=False)
@@ -19,6 +19,7 @@ parser.add_argument("--max_entropy_list_length", type=int, help="maximum length 
 
 parser.add_argument("--memcheck", action='store_true', help="activate memory write and executed detection", default=False)
 parser.add_argument("--entropy", action='store_true', help="activate entropy analysis", default=False)
+parser.add_argument("--dll", action='store_true', help="activate syscalls analysis", default=False)
 args = parser.parse_args()
 
 
@@ -36,14 +37,14 @@ if __name__ == "__main__":
     signal.signal(signal.SIGINT, signal_handler)
     if not os.path.isfile("docker/.panda/vm.qcow2"):
         print("Missing VM, trying to download...")
-        r = requests.get("https://uclouvain-my.sharepoint.com/:u:/g/personal/d_wauters_uclouvain_be/EZXz0Kf1U_VEhQSddwlPOI4B_oKqEwY-HmxC5Nv6Wd4WSA?e=09Zg7E?download=1")
+        r = requests.get("https://uclouvain-my.sharepoint.com/:u:/g/personal/d_wauters_uclouvain_be/EZXz0Kf1U_VEhQSddwlPOI4B_oKqEwY-HmxC5Nv6Wd4WSA?e=09Zg7E&download=1")
         with open("docker/.panda/vm.qcow2", 'wb') as file:
             file.write(r.content)
     if args.build:
         subprocess.run(["docker", "build", "-t", "panda_pandare:latest", "./docker"])
 
-    if not args.entropy and not args.memcheck:
-        print("You have to choose at least one type of analysis !\n--entropy\n--memcheck")
+    if not args.entropy and not args.memcheck and not args.dll:
+        print("You have to choose at least one type of analysis !\n--entropy\n--memcheck\n--dll")
         sys.exit(1)
 
     env_args = []

@@ -32,6 +32,8 @@ def send_command(p, cmd):
         '<': 'shift-comma',
         '>': 'shift-dot',
         '?': 'shift-slash',
+        '&': 'shift-7',
+        '^': 'shift-6',
         '\n': 'ret',
     }
 
@@ -52,11 +54,13 @@ def run_cmd():
     panda.run_monitor_cmd("sendkey esc")
     send_command(panda, "copy D:\\" + malware_sample + " C:\\Users\\IEUser\\Desktop\\sample.exe")
     send_command(panda, "start /w /D \"C:\\Users\\IEUser\\Desktop\" sample.exe")
+    #send_command(panda, "start /w /D \"C:\\Users\\IEUser\\Desktop\" sample.exe & shutdown /s /t 0 /f")
     panda.disable_tb_chaining()
     panda.run_monitor_cmd('begin_record /replay/sample')
     time.sleep(60)  # 600 - TODO: Need to find way of detecting end of process or timeout (40 min)
+    #time.sleep(1800)  # 1800 seconds = 30 minutes
     panda.run_monitor_cmd('end_record')
-    time.sleep(5)
+    time.sleep(2)
     panda.end_analysis()
 
 
