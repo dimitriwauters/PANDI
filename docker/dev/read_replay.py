@@ -4,6 +4,7 @@ from utility import EntropyAnalysis, PEInformations, DynamicLoadedDLL
 from syscalls import SysCallsInterpreter
 import os
 import sys
+import pickle
 
 ffi = cffi.FFI()
 panda = Panda(qcow='/root/.panda/vm.qcow2', mem="3G", os_version="windows-32-7sp0", extra_args="-nographic -loadvm 1")
@@ -28,6 +29,7 @@ block_num = entropy_granularity
 entropy_analysis = None
 syscall_interpreter = SysCallsInterpreter(panda)
 last_section_executed = None
+dynamic_dll_called = False
 
 dynamic_dll = None
 pe_infos = None
@@ -50,7 +52,7 @@ def virt_mem_after_write(env, pc, addr, size, buf):
 
 @panda.cb_before_block_exec(enabled=False)
 def before_block_exec(env, tb):
-    global entropy_activated, memcheck_activated, dll_activated, last_section_executed
+    global entropy_activated, memcheck_activated, dll_activated, last_section_executed, dynamic_dll_called
     if not panda.in_kernel(env) and panda.current_asid(env) == sample_asid:
         current_position = "Unknown"
         current_section = None
@@ -66,10 +68,10 @@ def before_block_exec(env, tb):
         if pe_infos.unpacked_EP_section[1] == 0 and current_section is not None \
                 and last_section_executed == pe_infos.initial_EP_section[0] \
                 and current_section != pe_infos.initial_EP_section[0]:
-            pe_infos.unpacked_EP_section = [current_section, env.rr_guest_instr_count]
+            if (dll_activated and dynamic_dll_called) or not dll_activated:
+                pe_infos.unpacked_EP_section = [current_section, env.rr_guest_instr_count]
         # Update entry point of the packer
-        if pe_infos.initial_EP_section[1] == 0 and current_section is not None \
-                and last_section_executed is None:
+        if pe_infos.initial_EP_section[1] == 0 and current_section is not None and last_section_executed is None:
             pe_infos.initial_EP_section[1] = env.rr_guest_instr_count
         if pc <= pe_infos.get_higher_section_addr():
             last_section_executed = current_section
@@ -83,12 +85,12 @@ def before_block_exec(env, tb):
                     syscall_result = syscall_interpreter.read_usercall(env, function_name)
                     if type(syscall_result) != str:
                         print("\t", syscall_result["name"], hex(syscall_result["addr"]))
-                    if function_name == "GetProcAddress":
+                    if function_name == "GetProcAddress" or function_name == "LdrGetProcedureAddress":
                         dynamic_dll.add_dll_method(syscall_result["name"], syscall_result["addr"])
                     elif "LoadLibrary" in function_name:
                         dynamic_dll.add_dll(syscall_result["name"])
                     """try:
-                        for arg_idx in range(10):
+                        for arg_idx in range(10):  # TODO: REMOVE BLOCK
                             arg_val = panda.arch.get_arg(env, arg_idx, convention='cdecl')
                             print(arg_val)
                             if arg_val > 0xFFFF:  # TODO: REMOVE BLOCK
@@ -102,6 +104,7 @@ def before_block_exec(env, tb):
                 elif pc in dynamic_dll.dynamic_dll_methods.values():
                     function_name = dynamic_dll.get_dll_method_name_from_addr(pc)
                     dynamic_dll.increase_call_nbr(function_name)
+                    dynamic_dll_called = True
                     current_position = f"DYNAMIC_DLL({function_name})"
 
                 if is_debug:
@@ -166,12 +169,12 @@ def on_all_sys_enter2(env, pc, call, rp):
                         print(f"{syscall_name} {arg_name.decode()}: {syscall_result}")
                         if syscall_name == "NtOpenSection" and arg_name.decode() == "ObjectAttributes":
                             dynamic_dll.add_dll(syscall_result)
-                        if arg_val > 0xFFFF:  # TODO: REMOVE BLOCK
+                        """if arg_val > 0xFFFF:  # TODO: REMOVE BLOCK
                             try:
                                 mem = panda.virtual_memory_read(env, arg_val, 64)
                                 print(mem)
                             except ValueError:
-                                pass
+                                pass"""
                     except Exception:
                         pass
 
@@ -218,11 +221,10 @@ if __name__ == "__main__":
                 result["dll_inital_iat"] = dynamic_dll.iat_dll
                 result["dll_dynamically_loaded_dll"] = dynamic_dll.loaded_dll
                 result["dll_call_nbrs"] = dynamic_dll.calls_nbr
-                result["dll_GetProcAddress_returns"] = list(self.dynamic_dll_methods.keys)
+                result["dll_GetProcAddress_returns"] = list(dynamic_dll.dynamic_dll_methods.keys())
+                with open("replay_result.pickle", "wb") as file:
+                    pickle.dump(result, file, protocol=pickle.HIGHEST_PROTOCOL)
         except Exception as e:
             print(e)
-        finally:
-            with open("replay_result.txt", "w") as file:
-                file.write(str(result))
     else:
         sys.exit(1)

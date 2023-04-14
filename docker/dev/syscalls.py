@@ -90,7 +90,12 @@ class SysCallsInterpreter:
             lpProcName_val = lpProcName_raw[:lpProcName_raw.find(b'\x00')].decode()
         except ValueError:
             pass
-        return {"name": lpProcName_val, "addr": self.panda.arch.get_retval(env)}
+        ret_addr = self.panda.arch.get_retval(env, convention="syscall")
+        """if ret_addr != 0x75830000:
+            return {"name": lpProcName_val, "addr": ret_addr}
+        else:
+            return {"name": lpProcName_val, "addr": 0}"""
+        return {"name": lpProcName_val, "addr": ret_addr}
 
     def _LoadLibraryA(self, env):
         """
@@ -105,7 +110,19 @@ class SysCallsInterpreter:
             lpLibFileName_val = lpLibFileName_raw[:lpLibFileName_raw.find(b'\x00')].decode()
         except ValueError:
             pass
-        return {"name": lpLibFileName_val, "addr": self.panda.arch.get_retval(env)}
+        return {"name": lpLibFileName_val, "addr": self.panda.arch.get_retval(env, convention="syscall")}
 
     def _LoadLibraryW(self, env):
         return self._LoadLibraryA(env)
+
+    def _LdrGetProcedureAddress(self, env):
+        hModule_addr = self.panda.arch.get_arg(env, 0, convention='cdecl')
+        FunctionName_addr = self.panda.arch.get_arg(env, 1, convention='cdecl')
+        Oridinal_addr = self.panda.arch.get_arg(env, 2, convention='cdecl')
+        FunctionName_val = "Unknown"
+        try:
+            FunctionName_raw = self.panda.virtual_memory_read(env, FunctionName_addr, 32)
+            FunctionName_val = FunctionName_raw[:FunctionName_raw.find(b'\x00')].decode()
+        except ValueError:
+            pass
+        return {"name": FunctionName_val, "addr": self.panda.arch.get_retval(env, convention="syscall")}

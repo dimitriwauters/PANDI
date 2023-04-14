@@ -60,7 +60,7 @@ def run_cmd():
     time.sleep(60)  # 600 - TODO: Need to find way of detecting end of process or timeout (40 min)
     #time.sleep(1800)  # 1800 seconds = 30 minutes
     panda.run_monitor_cmd('end_record')
-    time.sleep(2)
+    time.sleep(5)
     panda.end_analysis()
 
 
@@ -68,5 +68,6 @@ if __name__ == "__main__":
     if len(sys.argv) > 1:
         malware_sample = sys.argv[1]
         panda.run()
+        time.sleep(2)
 
 

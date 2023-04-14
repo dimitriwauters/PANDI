@@ -15,7 +15,7 @@ services:
       - "./replay:/replay"
     environment:
       - panda_debug=True
-      - panda_entropy=False
+      - panda_entropy=True
       - panda_dll=True
       #- panda_executable=upx_ADExplorer.exe
       #- panda_max_entropy_list_length=50

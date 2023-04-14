@@ -3,6 +3,7 @@ import subprocess
 import json
 import sys
 import time
+import pickle
 from utility import write_debug_file, write_output_file
 
 MAX_TRIES = 3
@@ -38,7 +39,7 @@ if __name__ == "__main__":
     for malware_sample in files_to_analyse:
         if ".exe" in malware_sample:
             is_packed = False
-            panda_output = None
+            panda_output_dict = None
             print_info(f"  -- Processing file '{malware_sample}'")
             for i in range(MAX_TRIES):
                 panda_run_output, panda_replay_output = None, None
@@ -52,7 +53,7 @@ if __name__ == "__main__":
                     print_info(e.stderr.decode())
                     sys.exit(e.returncode)
                 time.sleep(2)
-                print_info("    -- Analysing PANDA output (might take a while)")
+                print_info("    -- Analysing PANDA recording (might take a while)")
                 try:
                     panda_replay_output = subprocess.run(["python3", "/addon/read_replay.py", malware_sample], capture_output=True)
                 except subprocess.CalledProcessError as e:
@@ -64,16 +65,15 @@ if __name__ == "__main__":
                     write_debug_file(malware_sample, "run_panda", panda_run_output.stdout.decode())
                     write_debug_file(malware_sample, "read_replay", panda_replay_output.stdout.decode())
 
-                if os.path.isfile("replay_result.txt"):
-                    with open("replay_result.txt", "r") as file:
-                        panda_output = file.read()
-                if panda_output != "ERROR":
+                if os.path.isfile("replay_result.pickle"):
+                    with open("replay_result.pickle", "rb") as file:
+                        panda_output_dict = pickle.load(file)
+                if panda_output_dict is not None:
                     break
 
-                print_info(f"  !! An error occurred when recovering the output of PANDA, retrying... ({i+1} of {MAX_TRIES})\n")
+                print_info(f"  !! An error occurred when recovering the recording of PANDA, retrying... ({i+1} of {MAX_TRIES})\n")
 
-            if panda_output:
-                panda_output_dict = json.loads(panda_output.replace("'", "\""))
+            if panda_output_dict:
                 if memcheck_activated:
                     memory_write_list = panda_output_dict["memory_write_exe_list"]
                     if len(memory_write_list) > 0:
@@ -83,7 +83,7 @@ if __name__ == "__main__":
                             addr = elem[1] % 134  # Modulo x86, the length of an instruction
                             print(addr)"""
                         is_packed = True
-                    write_output_file(malware_sample, is_packed, "memcheck", memory_write_list)
+                    write_output_file(malware_sample, is_packed, "memcheck", "memcheck", {"memory_write_exe_list": memory_write_list})
                     result[is_packed].append(malware_sample)
                 if entropy_activated:
                     entropy = panda_output_dict["entropy"]
@@ -103,7 +103,14 @@ if __name__ == "__main__":
                             has_initial_eop = True
                         if header_name == entropy_unpacked_oep[0]:
                             has_unpacked_eop = True
-                        write_output_file(malware_sample, is_packed, f"{header_name}_entropy", f"{entropy_val[header_name][0]}\n{entropy_val[header_name][1]}\n{has_initial_eop}-{entropy_initial_oep[1]}\n{has_unpacked_eop}-{entropy_unpacked_oep[1]}")
+                        file_dict = {"entropy": [entropy_val[header_name][0], entropy_val[header_name][1]],
+                                     "has_inital_eop": has_initial_eop, "initial_eop": entropy_initial_oep[1],
+                                     "has_unpacked_eop": has_unpacked_eop, "unpacked_eop": entropy_unpacked_oep[1]}
+                        write_output_file(malware_sample, is_packed, "entropy", header_name, file_dict)
+                if dll_activated:
+                    file_dict = {"initial_iat": panda_output_dict["dll_inital_iat"], "dynamically_loaded_dll": panda_output_dict["dll_dynamically_loaded_dll"],
+                                 "calls_nbr": panda_output_dict["dll_call_nbrs"], "GetProcAddress_functions": panda_output_dict["dll_GetProcAddress_returns"]}
+                    write_output_file(malware_sample, is_packed, "syscalls", "syscalls", file_dict)
                 result[is_packed].append(malware_sample)
                 print_info("      -- The result of the analysis is: {}\n".format("PACKED" if is_packed else "NOT-PACKED"))
     print_info("++ Finished")

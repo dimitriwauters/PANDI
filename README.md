@@ -1,8 +1,6 @@
 # ABCD
 
----
-
-ABCD is a ***packing detection*** solution build on top of PANDA (https://github.com/panda-re/panda), a platform for Architecture-Neutral Dynamic Analysis.
+ABCD is a ***packing detection*** solution built on top of PANDA (https://github.com/panda-re/panda), a platform for Architecture-Neutral Dynamic Analysis.
 TODO   
 ABCD is currently developed at UCLouvain (Belgium) and is available under [TODO] license.
 
@@ -44,10 +42,10 @@ Before using the provided docker-compose, the virtual machine that will be used 
 You can find it by following this link: https://uclouvain-my.sharepoint.com/:u:/g/personal/d_wauters_uclouvain_be/EZXz0Kf1U_VEhQSddwlPOI4B_oKqEwY-HmxC5Nv6Wd4WSA?e=09Zg7E   
 (or by performing the procedure of creating a new virtual machine)
 
-Once the virtual machine is downloaded, the process can be launch as any docker-compose project.
+Once the virtual machine is downloaded, the process can be launched as any docker-compose project.
 
 ## Usage
-The three possible usages of this software can be combined but at least one must be enabled.
+The five possible options of this software can be combined but at least one must be enabled.
 
 ### Memory Write&Execution Detection
 >This option must be activated with the `--memcheck` parameter on `launch.py` or by modifying the `docker-compose.yml` file by adding `panda_memcheck=True` in the environment variables.
@@ -80,13 +78,34 @@ and raising an event when the address currently executed correspond to an import
 the `syscalls2` PANDA plugin) when a DLL is used and produce a list of used DLL before and after the detected entry point
 of the unpacked part of the software (if any).
 
-If the initial IAT contains `GetProcAddress` or `LoadLibrary`, this module is able to count the number of time these
+If the initial IAT contains `GetProcAddress` or `LoadLibrary`, this module is able to count the number of times these
 functions are called and also recover the imported function or DLL to later detect their usage.   
 The data collected on these syscalls will be used, in a machine learning algorithm, to determine if the analysed software
 is packed or not.
 
+### Section Permissions Modification Detection
+TODO
+
 ## Evaluation - Examples
 TODO
+
+## Improvements
+TODO
+
+### Exact Unpacked Entry-Point Detection
+Currently, the entry-point of the unpacked program is detected but this detection is not precise.
+As not every instruction is observed to reduce the process time, the exact entry-point can happen between two lookups.
+This means that the analysis will detect an approximation of the entry-point (for example 1000 instructions later) but not the exact one.
+
+To scope with that, we can think of two approaches:
+- The first one will be simple to set the granularity to zero with the variable `panda_entropy_granularity` but this will
+significantly increase the time needed to finish the analysis as every instruction will be analysed.
+- The second needs a little more work. It can be done by setting temporarily the variable `panda_entropy_granularity`
+to 0 when we see that the entry-point of the unpacked code is close. For example when a dynamically imported function is 
+called (DYNAMIC_DLL).
+
+This functionality as not been implemented as the purpose of this software is not to exact the unpacked data but only
+to define if the provided sample is packed or not.
 
 ## Build VM from scratch
 In case if you want to build your own VM or the given link is broken, this section will present how to rebuild the VM for PANDA.
