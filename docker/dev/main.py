@@ -11,6 +11,8 @@ MAX_TRIES = 3
 entropy_activated = os.getenv("panda_entropy", default=False) == "True"
 memcheck_activated = os.getenv("panda_memcheck", default=False) == "True"
 dll_activated = os.getenv("panda_dll", default=False) == "True"
+dll_discover_activated = os.getenv("panda_dll_discover", default=False) == "True"
+sections_activated = os.getenv("panda_section_perms", default=False) == "True"
 
 
 def print_info(text):
@@ -42,7 +44,7 @@ if __name__ == "__main__":
             panda_output_dict = None
             print_info(f"  -- Processing file '{malware_sample}'")
             for i in range(MAX_TRIES):
-                panda_run_output, panda_replay_output = None, None
+                panda_run_output, panda_dll_output, panda_replay_output = None, None, None
                 print_info("    -- Creating ISO")
                 subprocess.run(["genisoimage", "-max-iso9660-filenames", "-RJ", "-o", "payload.iso", f"/payload/{malware_sample}"], capture_output=True)
                 print_info("    -- Running PANDA")
@@ -52,6 +54,15 @@ if __name__ == "__main__":
                     print_info("    !! An error occurred when trying to execute PANDA:")
                     print_info(e.stderr.decode())
                     sys.exit(e.returncode)
+                time.sleep(2)
+                if dll_discover_activated:
+                    print_info("    -- Discovering DLLs")
+                    try:
+                        panda_dll_output = subprocess.run(["python3", "/addon/discover_dlls.py"], capture_output=True)
+                    except subprocess.CalledProcessError as e:
+                        print_info("    !! An error occurred when trying to discover DLLs:")
+                        print_info(e.stderr.decode())
+                        sys.exit(e.returncode)
                 time.sleep(2)
                 print_info("    -- Analysing PANDA recording (might take a while)")
                 try:
@@ -64,6 +75,8 @@ if __name__ == "__main__":
                 if is_debug:
                     write_debug_file(malware_sample, "run_panda", panda_run_output.stdout.decode())
                     write_debug_file(malware_sample, "read_replay", panda_replay_output.stdout.decode())
+                    if panda_dll_output:
+                        write_debug_file(malware_sample, "discover_dlls", panda_dll_output.stdout.decode())
 
                 if os.path.isfile("replay_result.pickle"):
                     with open("replay_result.pickle", "rb") as file:
@@ -111,6 +124,9 @@ if __name__ == "__main__":
                     file_dict = {"initial_iat": panda_output_dict["dll_inital_iat"], "dynamically_loaded_dll": panda_output_dict["dll_dynamically_loaded_dll"],
                                  "calls_nbr": panda_output_dict["dll_call_nbrs"], "GetProcAddress_functions": panda_output_dict["dll_GetProcAddress_returns"]}
                     write_output_file(malware_sample, is_packed, "syscalls", "syscalls", file_dict)
+                if sections_activated:
+                    file_dict = {"section_perms_changed": panda_output_dict["section_perms_changed"]}
+                    write_output_file(malware_sample, is_packed, "sections_perms", "sections_perms", file_dict)
                 result[is_packed].append(malware_sample)
                 print_info("      -- The result of the analysis is: {}\n".format("PACKED" if is_packed else "NOT-PACKED"))
     print_info("++ Finished")

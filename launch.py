@@ -17,9 +17,15 @@ parser.add_argument("--max_memory_write_exe_list_length", type=int, help="maximu
 parser.add_argument("--entropy_granularity", type=int, help="number of basic blocks between samples. Lower numbers result in higher run times", default=1000)
 parser.add_argument("--max_entropy_list_length", type=int, help="maximum length of entropy list before exiting", default=0)
 
+parser.add_argument("--dll_discover_granularity", type=int, help="maximum length of the returned list before exiting", default=1000)
+parser.add_argument("--max_dll_discover_fail", type=int, help="maximum length of the returned list before exiting", default=10000)
+parser.add_argument("--force_dll_rediscover", action='store_true', help="read the replay until the end", default=False)
+
 parser.add_argument("--memcheck", action='store_true', help="activate memory write and executed detection", default=False)
 parser.add_argument("--entropy", action='store_true', help="activate entropy analysis", default=False)
 parser.add_argument("--dll", action='store_true', help="activate syscalls analysis", default=False)
+parser.add_argument("--dll_discover", action='store_true', help="activate dll discovering system", default=False)
+parser.add_argument("--sections_perms", action='store_true', help="activate sections permission analysis", default=False)
 args = parser.parse_args()
 
 

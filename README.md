@@ -83,8 +83,30 @@ functions are called and also recover the imported function or DLL to later dete
 The data collected on these syscalls will be used, in a machine learning algorithm, to determine if the analysed software
 is packed or not.
 
+### Automatic DLL Discovery
+>This option must be activated with the `--dll_discovery` parameter on `launch.py` or by modifying the `docker-compose.yml` file by adding `panda_dll_discovery=True` in the environment variables.
+
+This option is usefull in the cas of a corrupted/missing/stripped IAT (Import Address Table).
+It will parse the DLLs loaded in memory by the sample to analyse and parse it to discover the exported function of these loaded DLL.
+Meaning that we will not need anymore to parse the IAT to recover the addresses of each function that will be called by the sample,
+we will know them before the execution of the sample.
+
+To limit the overhead of this option, the result is saved into a file available at `/payload/dll` and will be used
+for the next analysis. If you don't want to reuse the previously computed result, you can delete the file or add the
+`--force_dll_rediscover` on `launch.py` or add `panda_force_dll_rediscover=True` in the environment parameters of the `docker-compose.yml`.
+
+This option must be used in parallel to the [Syscalls Analysis](#syscalls-analysis) section. It will benefit from the discovered
+DLLs to perform its analysis. This option will not work alone.
+
 ### Section Permissions Modification Detection
-TODO
+>This option must be activated with the `--section_perms` parameter on `launch.py` or by modifying the `docker-compose.yml` file by adding `panda_section_perms=True` in the environment variables.
+
+This analysis make an additional verification regarding the headers of the executable. It recovers the initial permissions
+of the different sections at the beginning of the execution and tries at multiple times during the execution of the sample
+to write in the section if it was previously announced at read-only.
+
+It allows to know if the section permissions have been changed during the execution of the program, giving an indication
+that the sample may perform an unpacking procedure.
 
 ## Evaluation - Examples
 TODO

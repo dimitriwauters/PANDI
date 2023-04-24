@@ -2,12 +2,16 @@ from scipy.stats import entropy
 import os
 import pefile
 import pickle
+import hashlib
+import random
+import string
 
 class PEInformations:
     def __init__(self, panda, process_name):
         self.panda = panda
         self.process_name = process_name
         self.headers = {}  # {"UPX0": (0x401000, 0x401000), ...}
+        self.headers_perms = {}  # {"UPX0": {"uninitialized_data": True, "execute": False, "read": False, "write": False}}
         self.imports = {}
         self.higher_section_addr = None
         self.initial_EP = None
@@ -24,26 +28,37 @@ class PEInformations:
             for section in self.pe.sections:
                 start = headers[0] + section.VirtualAddress
                 end = start + section.Misc_VirtualSize
-                name = section.Name.decode().replace('\x00', '')
+                try:
+                    name = section.Name.decode().replace('\x00', '')
+                except UnicodeDecodeError:
+                    name = section.Name
                 self.headers[name] = (start, end)
+                self.headers_perms[name] = {"uninitialized_data": section.IMAGE_SCN_CNT_UNINITIALIZED_DATA,
+                                            "execute": section.IMAGE_SCN_MEM_EXECUTE,
+                                            "read": section.IMAGE_SCN_MEM_READ,
+                                            "write": section.IMAGE_SCN_MEM_WRITE}
                 if section.contains_rva(entry_point):
                     self.initial_EP_section[0] = name
                     self.initial_EP = headers[0] + entry_point
                 callback_entropy(name, section)
-            self.pe.parse_data_directories()
-            for entry in self.pe.DIRECTORY_ENTRY_IMPORT:
-                #print(entry.dll)
-                print(entry.dll, entry.struct.FirstThunk + headers[0], entry.__dict__, flush=True)
-                for imp in entry.imports:
-                    #self.imports[imp.name] = int(imp.address, base=16) + 0x200
-                    self.imports[imp.name] = imp.address
-                    print("\t", imp.name, imp.address, hex(imp.address), flush=True)
-                    #print(hex(imp.address), imp.name, hex(imp.struct_table.Function), imp.__dict__, flush=True)
-                    callback_iat(entry.dll.decode())
-            """for exp in pe.DIRECTORY_ENTRY_EXPORT.symbols:
-                print(hex(pe.OPTIONAL_HEADER.ImageBase + exp.address), exp.name, exp.ordinal, flush=True)"""
+            if self.pe.OPTIONAL_HEADER.DATA_DIRECTORY[pefile.DIRECTORY_ENTRY['IMAGE_DIRECTORY_ENTRY_IMPORT']].VirtualAddress != 0:
+                self.pe.parse_data_directories(directories=[pefile.DIRECTORY_ENTRY['IMAGE_DIRECTORY_ENTRY_IMPORT']])
+                if hasattr(self.pe, 'DIRECTORY_ENTRY_IMPORT'):
+                    for entry in self.pe.DIRECTORY_ENTRY_IMPORT:
+                        #print(entry.dll)
+                        print(entry.dll, entry.struct.FirstThunk + headers[0], entry.__dict__, flush=True)
+                        for imp in entry.imports:
+                            #self.imports[imp.name] = int(imp.address, base=16) + 0x200
+                            self.imports[imp.name] = imp.address
+                            print("\t", imp.name, imp.address, hex(imp.address), flush=True)
+                            #print(hex(imp.address), imp.name, hex(imp.struct_table.Function), imp.__dict__, flush=True)
+                            callback_iat(entry.dll.decode())
+                else:  # IAT is stripped
+                    pass  # TODO: IMPLEMENT
+                """for exp in pe.DIRECTORY_ENTRY_EXPORT.symbols:
+                    print(hex(pe.OPTIONAL_HEADER.ImageBase + exp.address), exp.name, exp.ordinal, flush=True)"""
         except ValueError as e:
-            print(e, flush=True)
+            print(e)
 
     def get_import_name_from_addr(self, addr):
         try:
@@ -61,6 +76,24 @@ class PEInformations:
             return self.higher_section_addr
         else:
             return self.higher_section_addr
+
+
+    def has_sections_perms_changed(self, cpu):
+        for section in list(self.headers_perms.keys()):
+            boundaries = self.headers[section]
+            if not self.headers_perms[section]["write"]:
+                try:
+                    self.panda.virtual_memory_write(cpu, boundaries[0], b'\x00')
+                    return True
+                except ValueError:
+                    pass
+            if not self.headers_perms[section]["read"]:
+                try:
+                    self.panda.virtual_memory_read(cpu, boundaries[0], 1)
+                    return True
+                except ValueError:
+                    pass
+        return False
 
 
 class EntropyAnalysis:
@@ -151,7 +184,9 @@ class DynamicLoadedDLL:
                 self.loaded_dll[position].append(sanitized)
 
     def add_dll_method(self, name, addr):
-        if name not in self.dynamic_dll_methods:
+        if name is None:
+            self.dynamic_dll_methods[''.join(random.choice(string.ascii_lowercase) for i in range(5))] = addr
+        elif name not in self.dynamic_dll_methods:
             self.dynamic_dll_methods[name] = addr
 
     def get_dll_method_name_from_addr(self, addr):
@@ -160,18 +195,78 @@ class DynamicLoadedDLL:
         except ValueError:
             return None
 
-    def get_dynamic_dll(self):
-        print(self.iat_dll)
-        print(self.loaded_dll)
-        print(self.calls_nbr)
-        print(list(self.dynamic_dll_methods.keys()))
-        return self.loaded_dll
-
     def get_nbr_calls(self, name):
         if name in self.calls_nbr:
             return self.calls_nbr[name]
         else:
             return 0
+
+
+class SearchDLL:
+    def __init__(self, panda):
+        self._DOS_HEADER_NEXT_PTR = 0x3c
+        self._SIZE_OF_FILEHEADER = 0x14
+        self.panda = panda
+        self.dll = {}
+        self.completed_dll = []
+        self.resolved_dll_ordinal = {}
+        with open('/root/.panda/vm.qcow2', 'rb') as vm_file:
+            self.vm_hash = hashlib.sha256(vm_file.read(8192)).hexdigest()
+
+    def search_dlls(self, env, specific_dll=None, specific_function=None):
+        found = False
+        for mapping in self.panda.get_mappings(env):
+            if mapping.file != self.panda.ffi.NULL:
+                name = self.panda.ffi.string(mapping.file).decode()
+                if ".dll" in name:
+                    dll_name = name.split('\\')[-1]
+                    if not dll_name in self.resolved_dll_ordinal:
+                        self.resolved_dll_ordinal[dll_name] = set()
+                    if (specific_dll is None or dll_name == specific_dll) and (dll_name not in self.completed_dll):
+                        try:
+                            new_exe_addr = int(self.panda.virtual_memory_read(env, mapping.base + self._DOS_HEADER_NEXT_PTR, 4)[::-1].hex(), base=16) + 0x4
+                            export_table_offset = int(self.panda.virtual_memory_read(env, mapping.base + new_exe_addr + self._SIZE_OF_FILEHEADER + 0x60, 4)[::-1].hex(), base=16)
+                            nbr_exported_fct = int(self.panda.virtual_memory_read(env, mapping.base + export_table_offset + 0x14, 4)[::-1].hex(), base=16)
+                            base_addr_exported_fct_name = int(self.panda.virtual_memory_read(env, mapping.base + export_table_offset + 0x20, 4)[::-1].hex(), base=16)
+                            for i in range(nbr_exported_fct):
+                                if i not in self.resolved_dll_ordinal[dll_name]:
+                                    try:
+                                        fct_name_addr = int(self.panda.virtual_memory_read(env, mapping.base + base_addr_exported_fct_name + i * 0x4, 4)[::-1].hex(), base=16)
+                                        fct_name = self.panda.virtual_memory_read(env, mapping.base + fct_name_addr, 32).split(b'\x00')[0].decode()
+                                        self.resolved_dll_ordinal[dll_name].add(i)
+                                        if specific_function is None or fct_name == specific_function:
+                                            function_rva = int(self.panda.virtual_memory_read(env, mapping.base + export_table_offset + 0x2c + i * 0x4, 4)[::-1].hex(), base=16)
+                                            if (mapping.base + function_rva) not in self.dll:
+                                                self.dll[mapping.base + function_rva] = f"{fct_name}-{dll_name}"
+                                                found = True
+                                                print(hex(mapping.base + function_rva), f"{fct_name}-{dll_name}")
+                                        if len(self.resolved_dll_ordinal[dll_name]) == nbr_exported_fct:
+                                            self.completed_dll.append(dll_name)
+                                    except Exception:
+                                        pass
+                        except ValueError:
+                            pass
+        return found
+
+    def get_dll_method_name_from_addr(self, addr):
+        if addr in self.dll:
+            return self.dll[addr]
+        else:
+            return None
+
+    def save_discovered_dlls(self):
+        if not os.path.isdir("/payload/dll"):
+            os.makedirs("/payload/dll")
+        with open(f"/payload/dll/{self.vm_hash}_discovered_dlls.pickle", 'wb') as file:
+            pickle.dump(self.dll, file, protocol=pickle.HIGHEST_PROTOCOL)
+
+    def get_discovered_dlls(self):
+        if self.is_savefile_exist():
+            with open(f"/payload/dll/{self.vm_hash}_discovered_dlls.pickle", 'rb') as file:
+                self.dll = pickle.load(file)
+
+    def is_savefile_exist(self):
+        return os.path.isfile(f"/payload/dll/{self.vm_hash}_discovered_dlls.pickle")
 
 
 def write_debug_file(file_name, process_name, process_output):
