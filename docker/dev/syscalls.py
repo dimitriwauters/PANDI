@@ -42,6 +42,12 @@ class SysCallsInterpreter:
     def _SectionPageProtection(self, env, value):
         return self._Protect(env, value)
 
+    def _NewAccessProtection(self, env, value):
+        return self._Protect(env, value)
+
+    def _BaseAddress(self, env, addr):
+        return int(self.panda.virtual_memory_read(env, addr, 4)[::-1].hex(), base=16)
+
     def read_ObjectAttributes(self, env, addr):
         object_length = self.panda.ffi.cast("unsigned int", int(self.panda.virtual_memory_read(env, addr, 4)[::-1].hex(), base=16))
         if object_length == 0:
@@ -67,7 +73,7 @@ class SysCallsInterpreter:
     # ==================================================================================================================
 
     def read_usercall(self, env, function_name):
-        result = "Unknown"
+        result = None
         try:
             result = getattr(self, f"_{function_name}")(env)
         except AttributeError:

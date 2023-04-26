@@ -3,7 +3,6 @@ import os
 import pefile
 import pickle
 import hashlib
-import random
 import string
 
 class PEInformations:
@@ -60,6 +59,12 @@ class PEInformations:
         except ValueError as e:
             print(e)
 
+    def get_section_from_addr(self, addr):
+        for section in self.headers.keys():
+            if self.headers[section][0] <= addr <= self.headers[section][1]:
+                return section
+        return None
+
     def get_import_name_from_addr(self, addr):
         try:
             return list(self.imports.keys())[list(self.imports.values()).index(addr)]
@@ -77,6 +82,10 @@ class PEInformations:
         else:
             return self.higher_section_addr
 
+    def get_section_initial_perms(self, section):
+        if section in self.headers:
+            return self.headers_perms[section]
+        return None
 
     def has_sections_perms_changed(self, cpu):
         for section in list(self.headers_perms.keys()):
@@ -162,18 +171,11 @@ class DynamicLoadedDLL:
         self.iat_dll = []
         self.loaded_dll = {"before": [], "after": []}
         self.dynamic_dll_methods = {}
-        self.calls_nbr = {}
 
     def initial_iat(self, dll_name):
         dll_name = dll_name.lower()
         if dll_name not in self.iat_dll:
             self.iat_dll.append(dll_name)
-
-    def increase_call_nbr(self, name):
-        if name not in self.calls_nbr:
-            self.calls_nbr[name] = 1
-        else:
-            self.calls_nbr[name] += 1
 
     def add_dll(self, dll_name):
         dll_name = dll_name.lower()
@@ -195,12 +197,45 @@ class DynamicLoadedDLL:
         except ValueError:
             return None
 
-    def get_nbr_calls(self, name):
-        if name in self.calls_nbr:
-            return self.calls_nbr[name]
-        else:
-            return 0
 
+class DLLCallAnalysis:
+    def __init__(self, panda, pe_info):
+        self.panda = panda
+        self.pe_info = pe_info
+        self.functions = {"iat": {}, "dynamic": {}, "discovered": {}}
+
+    def increase_call_nbr(self, source, name):
+        if name not in self.functions[source]:
+            self.functions[source][name] = 1
+        else:
+            self.functions[source][name] += 1
+
+    def add_dll_function(self, source, name, addr):
+        if name not in self.functions:
+            self.functions[source][name] = addr
+
+    def get_dll_function_name_from_addr(self, addr):
+        for source in self.functions.keys():
+            try:
+                functions = list(self.functions[source].keys())
+                index = list(self.functions.values()).index(addr)
+                return functions[index]
+            except ValueError:
+                pass
+        return None
+
+    def get_nbr_calls(self, name, source=None):
+        if source is None:
+            sum = 0
+            for s in self.functions.keys():
+                if name in self.functions[s]:
+                    sum += self.functions[s][name]
+            return sum
+        else:
+            if name in self.functions[source]:
+                return self.functions[source][name]
+            else:
+                return 0
 
 class SearchDLL:
     def __init__(self, panda):

@@ -49,8 +49,8 @@ if __name__ == "__main__":
     if args.build:
         subprocess.run(["docker", "build", "-t", "panda_pandare:latest", "./docker"])
 
-    if not args.entropy and not args.memcheck and not args.dll:
-        print("You have to choose at least one type of analysis !\n--entropy\n--memcheck\n--dll")
+    if not args.entropy and not args.memcheck and not args.dll and not args.section_perms:
+        print("You have to choose at least one type of analysis !\n--entropy\n--memcheck\n--dll\n--section_perms")
         sys.exit(1)
 
     env_args = []

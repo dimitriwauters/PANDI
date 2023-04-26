@@ -108,6 +108,9 @@ to write in the section if it was previously announced at read-only.
 It allows to know if the section permissions have been changed during the execution of the program, giving an indication
 that the sample may perform an unpacking procedure.
 
+## Output (results)
+TODO
+
 ## Evaluation - Examples
 TODO
 
