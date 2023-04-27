@@ -19,8 +19,9 @@ services:
       - panda_entropy=False
       - panda_dll=True
       - panda_dll_discover=True
-      - panda_section_perms=True
+      #- panda_section_perms=True
+      - panda_first_bytes=True
       #- panda_executable=upx_ADExplorer.exe
       #- panda_max_entropy_list_length=50
-    command: "python3 /addon/read_replay.py winupack_ADExplorer.exe"
+    #command: "python3 /addon/read_replay.py upx_ADExplorer.exe"
     #command: "python3 /addon/discover_dlls.py"

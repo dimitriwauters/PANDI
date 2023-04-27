@@ -15,6 +15,7 @@ sample_asid = None
 malware_pid = set()
 memory_write_exe_list = {}
 memory_write_list = {}
+executed_bytes_list = []
 
 force_complete_replay = os.getenv("panda_force_complete_replay", default=False) == "True"
 max_memory_write_exe_list_length = int(os.getenv("panda_max_memory_write_exe_list_length", default=1000))
@@ -26,6 +27,7 @@ memcheck_activated = os.getenv("panda_memcheck", default=False) == "True"
 dll_activated = os.getenv("panda_dll", default=False) == "True"
 dll_discover_activated = os.getenv("panda_dll_discover", default=False) == "True"
 section_activated = os.getenv("panda_section_perms", default=False) == "True"
+first_bytes_activated = os.getenv("panda_first_bytes", default=False) == "True"
 
 block_num = entropy_granularity
 entropy_analysis = None
@@ -167,13 +169,23 @@ def before_block_exec(env, tb):
                 memcheck_activated = False
             if is_debug:
                 print(f"(BLOCK_EXEC) FOUND PREVIOUSLY WRITTEN ADDR BEING EXECUTED! PC: {hex(pc)}", flush=True)
+    # =============================== RECORD FIRST BYTES ===============================
+    if first_bytes_activated:
+        global executed_bytes_list
+        if len(executed_bytes_list) < 64:
+            pc = panda.arch.get_pc(env)
+            section_name = pe_infos.get_section_from_addr(pc)
+            if section_name :
+                bytes = panda.virtual_memory_read(env, pc, tb.size)
+                size = min(tb.size,64-len(executed_bytes_list))
+                for i in range(size):
+                    executed_bytes_list.append(bytes[i])
     # ====================================================================================
     if not force_complete_replay and not entropy_activated and not memcheck_activated and not dll_activated and not section_activated:
         try:
             panda.end_replay()
         except:
             pass
-
 
 @panda.ppp("syscalls2", "on_all_sys_enter2", autoload=False)
 def on_all_sys_enter2(env, pc, call, rp):
@@ -248,20 +260,22 @@ if __name__ == "__main__":
         if dll_discover_activated:
             discovered_dll.get_discovered_dlls()
         result = {"memory_write_exe_list": "", "entropy": "", "entropy_initial_oep": "", "entropy_unpacked_oep": "",
-                  "dll_inital_iat": "", "dll_dynamically_loaded_dll": "", "dll_call_nbrs": "",
-                  "dll_GetProcAddress_returns": "", "section_perms_changed": ""}
+                  "dll_inital_iat": "","function_inital_iat": "", "dll_dynamically_loaded_dll": "", "dll_call_nbrs": "",
+                  "dll_GetProcAddress_returns": "", "section_perms_changed": "","executed_bytes_list":""}
         try:
-            if entropy_activated or memcheck_activated or dll_activated or section_activated:
+            if entropy_activated or memcheck_activated or dll_activated or section_activated or first_bytes_activated:
                 panda.run_replay("/replay/sample")
                 result["memory_write_exe_list"] = memory_write_exe_list
                 result["entropy"] = entropy_analysis.entropy
                 result["entropy_initial_oep"] = pe_infos.initial_EP_section
                 result["entropy_unpacked_oep"] = pe_infos.unpacked_EP_section
                 result["dll_inital_iat"] = dynamic_dll.iat_dll
+                result["function_inital_iat"] = list(pe_infos.imports.keys())
                 result["dll_dynamically_loaded_dll"] = dynamic_dll.loaded_dll
                 result["dll_call_nbrs_generic"] = dll_analysis.get_generic_functions()
                 result["dll_call_nbrs_malicious"] = dll_analysis.get_malicious_functions()
                 result["dll_GetProcAddress_returns"] = list(dynamic_dll.dynamic_dll_methods.keys())
+                result["executed_bytes_list"] = executed_bytes_list
                 result["section_perms_changed"] = section_perms_check.permissions_modifications
                 with open("replay_result.pickle", "wb") as file:
                     pickle.dump(result, file, protocol=pickle.HIGHEST_PROTOCOL)
