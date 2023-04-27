@@ -48,7 +48,8 @@ class PEInformations:
                         print(entry.dll, entry.struct.FirstThunk + headers[0], entry.__dict__, flush=True)
                         for imp in entry.imports:
                             #self.imports[imp.name] = int(imp.address, base=16) + 0x200
-                            self.imports[imp.name] = imp.address
+                            if imp.name != None:
+                                self.imports[imp.name.decode()] = imp.address
                             print("\t", imp.name, imp.address, hex(imp.address), flush=True)
                             #print(hex(imp.address), imp.name, hex(imp.struct_table.Function), imp.__dict__, flush=True)
                             callback_iat(entry.dll.decode())

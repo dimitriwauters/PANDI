@@ -171,7 +171,7 @@ def before_block_exec(env, tb):
                 memcheck_activated = False
             if is_debug:
                 print(f"(BLOCK_EXEC) FOUND PREVIOUSLY WRITTEN ADDR BEING EXECUTED! PC: {hex(pc)}", flush=True)
-    # =============================== EXEC WRITE DETECTION ===============================
+    # =============================== RECORD FIRST BYTES ===============================
     if first_bytes_activated:
         global executed_bytes_list
         if len(executed_bytes_list) < 64:
@@ -262,13 +262,12 @@ if __name__ == "__main__":
                 result["entropy_initial_oep"] = pe_infos.initial_EP_section
                 result["entropy_unpacked_oep"] = pe_infos.unpacked_EP_section
                 result["dll_inital_iat"] = dynamic_dll.iat_dll
-                result["function_inital_iat"] = pe_infos.imports.keys()
+                result["function_inital_iat"] = list(pe_infos.imports.keys())
                 result["dll_dynamically_loaded_dll"] = dynamic_dll.loaded_dll
                 result["dll_call_nbrs"] = dll_analysis.functions
                 result["dll_GetProcAddress_returns"] = list(dynamic_dll.dynamic_dll_methods.keys())
                 #result["section_perms_changed"] = section_perms_changed
                 result["executed_bytes_list"] = executed_bytes_list
-                print(executed_bytes_list)
                 with open("replay_result.pickle", "wb") as file:
                     pickle.dump(result, file, protocol=pickle.HIGHEST_PROTOCOL)
         except Exception as e:
