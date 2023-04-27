@@ -122,7 +122,8 @@ if __name__ == "__main__":
                         write_output_file(malware_sample, is_packed, "entropy", header_name, file_dict)
                 if dll_activated:
                     file_dict = {"initial_iat": panda_output_dict["dll_inital_iat"], "dynamically_loaded_dll": panda_output_dict["dll_dynamically_loaded_dll"],
-                                 "calls_nbr": panda_output_dict["dll_call_nbrs"], "GetProcAddress_functions": panda_output_dict["dll_GetProcAddress_returns"]}
+                                 "calls_nbr_generic": panda_output_dict["calls_nbr_generic"], "call_nbrs_malicious": panda_output_dict["dll_call_nbrs_malicious"],
+                                 "GetProcAddress_functions": panda_output_dict["dll_GetProcAddress_returns"]}
                     write_output_file(malware_sample, is_packed, "syscalls", "syscalls", file_dict)
                 if sections_activated:
                     file_dict = {"section_perms_changed": panda_output_dict["section_perms_changed"]}

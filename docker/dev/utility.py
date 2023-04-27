@@ -199,43 +199,45 @@ class DynamicLoadedDLL:
 
 
 class DLLCallAnalysis:
-    def __init__(self, panda, pe_info):
-        self.panda = panda
-        self.pe_info = pe_info
-        self.functions = {"iat": {}, "dynamic": {}, "discovered": {}}
+    def __init__(self):
+        self.functions_generic = {"iat": {}, "dynamic": {}, "discovered": {}}
+        self.functions_malicious = {"iat": {}, "dynamic": {}, "discovered": {}}
+        self.__MALICIOUS_FUNCTIONS = ["getprocaddress", "loadlibrary", "exitprocess", "getmodulehandle", "virtualalloc",
+                                     "virtualfree", "getmodulefilename", "createfile", "regqueryvalueex", "messagebox",
+                                     "getcommandline", "virtualprotect", "getstartupinfo", "getstdhandle", "regopenkeyex"]
+
+    def __get_list_for_function(self, name):
+        if name.lower() in self.__MALICIOUS_FUNCTIONS:
+            return self.functions_malicious
+        else:
+            return self.functions_generic
 
     def increase_call_nbr(self, source, name):
-        if name not in self.functions[source]:
-            self.functions[source][name] = 1
+        list_to_use = self.__get_list_for_function(name)
+        if name not in list_to_use[source]:
+            list_to_use[source][name] = 1
         else:
-            self.functions[source][name] += 1
-
-    def add_dll_function(self, source, name, addr):
-        if name not in self.functions:
-            self.functions[source][name] = addr
-
-    def get_dll_function_name_from_addr(self, addr):
-        for source in self.functions.keys():
-            try:
-                functions = list(self.functions[source].keys())
-                index = list(self.functions.values()).index(addr)
-                return functions[index]
-            except ValueError:
-                pass
-        return None
+            list_to_use[source][name] += 1
 
     def get_nbr_calls(self, name, source=None):
+        list_to_use = self.__get_list_for_function(name)
         if source is None:
             sum = 0
-            for s in self.functions.keys():
-                if name in self.functions[s]:
-                    sum += self.functions[s][name]
+            for s in list_to_use.keys():
+                if name in list_to_use[s]:
+                    sum += list_to_use[s][name]
             return sum
         else:
-            if name in self.functions[source]:
-                return self.functions[source][name]
+            if name in list_to_use[source]:
+                return list_to_use[source][name]
             else:
                 return 0
+
+    def get_malicious_functions(self):
+        return self.functions_malicious
+
+    def get_generic_functions(self):
+        return self.functions_generic
 
 class SearchDLL:
     def __init__(self, panda):
@@ -328,3 +330,55 @@ def read_output_file(file_name, is_packed, type_of_analysis, debug_name):
         except FileNotFoundError:
             pass
     return result
+
+
+class SectionPermissionCheck:
+    class VirtualMemoryCheck:
+        def __init__(self):
+            self.__waiting = {"baseaddress": None, "permissions": None}
+            self.translation = {"PAGE_EXECUTE": {"execute": True, "read": False, "write": False},
+                                "PAGE_EXECUTE_READ": {"execute": True, "read": True, "write": False},
+                                "PAGE_EXECUTE_READWRITE": {"execute": True, "read": True, "write": True},
+                                "PAGE_EXECUTE_WRITECOPY": {"execute": True, "read": False, "write": True},
+                                "PAGE_NOACCESS": {"execute": False, "read": False, "write": False},
+                                "PAGE_READONLY": {"execute": False, "read": True, "write": False},
+                                "PAGE_READWRITE": {"execute": False, "read": True, "write": True},
+                                "PAGE_WRITECOPY": {"execute": False, "read": False, "write": True},
+                                "PAGE_TARGETS_INVALID or PAGE_TARGETS_NO_UPDATE": None}
+
+        def add_baseaddress(self, addr):
+            self.__waiting["baseaddress"] = addr
+
+        def add_permissions(self, perms):
+            self.__waiting["permissions"] = self.translation[perms]
+
+        def get_infos(self):
+            data = self.__waiting
+            self.__waiting = {"baseaddress": None, "permissions": None}
+            return data
+
+    def __init__(self, initial_perms):
+        self.permissions_modifications = {"initial": initial_perms}
+        self.__last_modification = "initial"
+        self.__virtual_memory_check = self.VirtualMemoryCheck()
+
+    def add_baseaddress(self, addr):
+        self.__virtual_memory_check.add_baseaddress(addr)
+
+    def add_permissions(self, perms):
+        self.__virtual_memory_check.add_permissions(perms)
+
+    def get_infos(self):
+        return self.__virtual_memory_check.get_infos()
+
+    def add_section_permission(self, time, section_name, access, perm):
+        if not time in self.permissions_modifications:
+            self.permissions_modifications[time] = {}
+        if not section_name in self.permissions_modifications[time]:
+            self.permissions_modifications[time][section_name] = {}
+        self.permissions_modifications[time] = self.permissions_modifications[self.__last_modification]
+        self.permissions_modifications[time][section_name][access] = perm
+        self.__last_modification = time
+
+    def get_last_section_permission(self, section_name):
+        return self.permissions_modifications[self.__last_modification][section_name]

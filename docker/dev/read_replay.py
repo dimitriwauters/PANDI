@@ -1,6 +1,6 @@
 import cffi
 from pandare import Panda, panda_expect
-from utility import EntropyAnalysis, PEInformations, DynamicLoadedDLL, SearchDLL, DLLCallAnalysis
+from utility import EntropyAnalysis, PEInformations, DynamicLoadedDLL, SearchDLL, DLLCallAnalysis, SectionPermissionCheck
 from syscalls import SysCallsInterpreter
 import os
 import sys
@@ -31,9 +31,9 @@ block_num = entropy_granularity
 entropy_analysis = None
 syscall_interpreter = SysCallsInterpreter(panda)
 last_section_executed = None
-section_perms_modification = {}
 
-dll_analysis = None
+section_perms_check = None
+dll_analysis = DLLCallAnalysis()
 dynamic_dll = None
 pe_infos = None
 discovered_dll = None
@@ -55,36 +55,34 @@ def virt_mem_after_write(env, pc, addr, size, buf):
                 memory_write_list[current_addr].append(pc)
     # ==================================== PERMS CHECK ====================================
     if section_activated:
-        global section_perms_modification
         section_name = pe_infos.get_section_from_addr(addr)
         if section_name:
-            initial_perms = pe_infos.get_section_initial_perms(section_name)
-            if not initial_perms["write"]:
-                section_perms_modification[env.rr_guest_instr_count] = {section_name: {"write": True}}
+            last_perms = section_perms_check.get_last_section_permission(section_name)
+            if not last_perms["write"]:
+                section_perms_check.add_section_permission(env.rr_guest_instr_count, section_name, "write", True)
 
 
 @panda.cb_virt_mem_after_read(enabled=False)
 def virt_mem_after_read(env, pc, addr, size, buf):
     # ==================================== PERMS CHECK ====================================
     if section_activated:
-        global section_perms_modification
         section_name = pe_infos.get_section_from_addr(addr)
         if section_name:
-            initial_perms = pe_infos.get_section_initial_perms(section_name)
-            if not initial_perms["read"]:
-                section_perms_modification[env.rr_guest_instr_count] = {section_name: {"read": True}}
+            last_perms = section_perms_check.get_last_section_permission(section_name)
+            if not last_perms["read"]:
+                section_perms_check.add_section_permission(env.rr_guest_instr_count, section_name, "read", True)
 
 
 @panda.cb_before_block_exec(enabled=False)
 def before_block_exec(env, tb):
-    global entropy_activated, memcheck_activated, dll_activated, last_section_executed, section_perms_modification
+    global entropy_activated, memcheck_activated, dll_activated, last_section_executed, section_perms_check
     if not panda.in_kernel(env) and panda.current_asid(env) == sample_asid:
         current_position = "Unknown"
         current_section = None
         pc = panda.arch.get_pc(env)
         if not pe_infos.headers:
             pe_infos.init_headers(entropy_analysis.initial_entropy, dynamic_dll.initial_iat)
-            section_perms_modification["initial"] = pe_infos.headers_perms
+            section_perms_check = SectionPermissionCheck(pe_infos.headers_perms)
         for header_name in pe_infos.headers:
             header = pe_infos.headers[header_name]
             if header[0] <= pc <= header[1]:
@@ -105,9 +103,9 @@ def before_block_exec(env, tb):
         if section_activated:
             section_name = pe_infos.get_section_from_addr(pc)
             if section_name:
-                initial_perms = pe_infos.get_section_initial_perms(section_name)
-                if not initial_perms["execute"]:
-                    section_perms_modification[env.rr_guest_instr_count] = {section_name: {"execute": True}}
+                last_perms = section_perms_check.get_last_section_permission(section_name)
+                if not last_perms["execute"]:
+                    section_perms_check.add_section_permission(env.rr_guest_instr_count, section_name, "execute", True)
         # ===================================== DLL CHECK =====================================
         if dll_activated and pe_infos.headers:
             if pc in pe_infos.imports.values() or pc in dynamic_dll.dynamic_dll_methods.values() or pc in discovered_dll.dll.keys():
@@ -196,11 +194,22 @@ def on_all_sys_enter2(env, pc, call, rp):
                             if syscall_name == "NtOpenSection" and arg_name.decode() == "ObjectAttributes":
                                 dynamic_dll.add_dll(syscall_result)
                         if section_activated:
-                            if arg_name.decode() == "BaseAddress":
-                                section_name = pe_infos.get_section_from_addr(syscall_result)
-                                if section_name:
-                                    initial_perms = pe_infos.get_section_initial_perms(section_name)
-                                    print(f"Section found: {section_name}")
+                            if syscall_name == "NtProtectVirtualMemory":
+                                if arg_name.decode() == "BaseAddress":
+                                    section_name = pe_infos.get_section_from_addr(syscall_result)
+                                    if section_name:
+                                        section_perms_check.add_baseaddress(syscall_result)
+                                elif arg_name.decode() == "NewProtectWin32":
+                                    section_name = pe_infos.get_section_from_addr(syscall_result)
+                                    if section_name:
+                                        section_perms_check.add_permissions(syscall_result)
+                                        data = section_perms_check.get_infos()
+                                        if data and data["baseadress"] and data["permissions"]:
+                                            last_perms = section_perms_check.get_last_section_permission(section_name)
+                                            for access in ["execute", "read", "write"]:
+                                                if last_perms[access] != data["permissions"][access]:
+                                                    section_perms_check.add_section_permission(env.rr_guest_instr_count, section_name, access, data["permissions"][access])
+                                print("SECTION MODIF: ", section_perms_check.permissions_modifications)
                     except Exception:
                         pass
 
@@ -235,7 +244,6 @@ if __name__ == "__main__":
         pe_infos = PEInformations(panda, malware_sample)
         entropy_analysis = EntropyAnalysis(panda, pe_infos)
         dynamic_dll = DynamicLoadedDLL(panda, pe_infos)
-        dll_analysis = DLLCallAnalysis(panda, pe_infos)
         discovered_dll = SearchDLL(panda)
         if dll_discover_activated:
             discovered_dll.get_discovered_dlls()
@@ -251,9 +259,10 @@ if __name__ == "__main__":
                 result["entropy_unpacked_oep"] = pe_infos.unpacked_EP_section
                 result["dll_inital_iat"] = dynamic_dll.iat_dll
                 result["dll_dynamically_loaded_dll"] = dynamic_dll.loaded_dll
-                result["dll_call_nbrs"] = dll_analysis.functions
+                result["dll_call_nbrs_generic"] = dll_analysis.get_generic_functions()
+                result["dll_call_nbrs_malicious"] = dll_analysis.get_malicious_functions()
                 result["dll_GetProcAddress_returns"] = list(dynamic_dll.dynamic_dll_methods.keys())
-                result["section_perms_changed"] = section_perms_changed
+                result["section_perms_changed"] = section_perms_check.permissions_modifications
                 with open("replay_result.pickle", "wb") as file:
                     pickle.dump(result, file, protocol=pickle.HIGHEST_PROTOCOL)
         except Exception as e:
