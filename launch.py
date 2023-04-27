@@ -26,6 +26,7 @@ parser.add_argument("--entropy", action='store_true', help="activate entropy ana
 parser.add_argument("--dll", action='store_true', help="activate syscalls analysis", default=False)
 parser.add_argument("--dll_discover", action='store_true', help="activate dll discovering system", default=False)
 parser.add_argument("--sections_perms", action='store_true', help="activate sections permission analysis", default=False)
+parser.add_argument("--first_bytes", action='store_true', help="activate first bytes analysis", default=False)
 args = parser.parse_args()
 
 
@@ -49,8 +50,8 @@ if __name__ == "__main__":
     if args.build:
         subprocess.run(["docker", "build", "-t", "panda_pandare:latest", "./docker"])
 
-    if not args.entropy and not args.memcheck and not args.dll and not args.section_perms:
-        print("You have to choose at least one type of analysis !\n--entropy\n--memcheck\n--dll\n--section_perms")
+    if not args.entropy and not args.memcheck and not args.dll and not args.section_perms and not args.first_bytes:
+        print("You have to choose at least one type of analysis !\n--entropy\n--memcheck\n--dll\n--section_perms\n--first_bytes")
         sys.exit(1)
 
     env_args = []
