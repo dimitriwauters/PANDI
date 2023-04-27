@@ -19,7 +19,7 @@ services:
       - panda_entropy=False
       - panda_dll=True
       - panda_dll_discover=True
-      #- panda_section_perms=True
+      - panda_section_perms=True
       - panda_first_bytes=True
       #- panda_executable=upx_ADExplorer.exe
       #- panda_max_entropy_list_length=50

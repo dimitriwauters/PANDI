@@ -79,8 +79,8 @@ if __name__ == "__main__":
                         write_debug_file(malware_sample, "discover_dlls", panda_dll_output.stdout.decode())
 
                 if os.path.isfile("replay_result.pickle"):
-                    with open("replay_result.pickle", "rb") as file:
-                        panda_output_dict = pickle.load(file)
+                    with open("replay_result.pickle", "rb") as f:
+                        panda_output_dict = pickle.load(f)
                 if panda_output_dict is not None:
                     break
 
@@ -122,7 +122,7 @@ if __name__ == "__main__":
                         write_output_file(malware_sample, is_packed, "entropy", header_name, file_dict)
                 if dll_activated:
                     file_dict = {"initial_iat": panda_output_dict["dll_inital_iat"], "dynamically_loaded_dll": panda_output_dict["dll_dynamically_loaded_dll"],
-                                 "calls_nbr_generic": panda_output_dict["calls_nbr_generic"], "call_nbrs_malicious": panda_output_dict["dll_call_nbrs_malicious"],
+                                 "call_nbrs_generic": panda_output_dict["dll_call_nbrs_generic"], "call_nbrs_malicious": panda_output_dict["dll_call_nbrs_malicious"],
                                  "GetProcAddress_functions": panda_output_dict["dll_GetProcAddress_returns"],
                                  "function_inital_iat": panda_output_dict["function_inital_iat"]}
                     write_output_file(malware_sample, is_packed, "syscalls", "syscalls", file_dict)

@@ -94,7 +94,7 @@ def before_block_exec(env, tb):
         if pe_infos.unpacked_EP_section[1] == 0 and current_section is not None \
                 and last_section_executed == pe_infos.initial_EP_section[0] \
                 and current_section != pe_infos.initial_EP_section[0]:
-            if (dll_activated and len(dll_analysis.functions["dynamic"]) > 0) or not dll_activated:
+            if (dll_activated and len(dll_analysis.functions_generic["dynamic"]) + len(dll_analysis.functions_malicious["dynamic"]) > 0) or not dll_activated:
                 pe_infos.unpacked_EP_section = [current_section, env.rr_guest_instr_count]
         # Update entry point of the packer
         if pe_infos.initial_EP_section[1] == 0 and current_section is not None and last_section_executed is None:
@@ -277,8 +277,8 @@ if __name__ == "__main__":
                 result["dll_GetProcAddress_returns"] = list(dynamic_dll.dynamic_dll_methods.keys())
                 result["executed_bytes_list"] = executed_bytes_list
                 result["section_perms_changed"] = section_perms_check.permissions_modifications
-                with open("replay_result.pickle", "wb") as file:
-                    pickle.dump(result, file, protocol=pickle.HIGHEST_PROTOCOL)
+                with open("replay_result.pickle", "wb") as f:
+                    pickle.dump(result, f, protocol=pickle.HIGHEST_PROTOCOL)
         except Exception as e:
             print(e)
     else:
