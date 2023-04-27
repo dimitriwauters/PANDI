@@ -13,7 +13,7 @@ memcheck_activated = os.getenv("panda_memcheck", default=False) == "True"
 dll_activated = os.getenv("panda_dll", default=False) == "True"
 dll_discover_activated = os.getenv("panda_dll_discover", default=False) == "True"
 sections_activated = os.getenv("panda_section_perms", default=False) == "True"
-
+first_bytes_activated = os.getenv("panda_first_bytes", default=False) == "True"
 
 def print_info(text):
     if not is_silent:
@@ -122,11 +122,15 @@ if __name__ == "__main__":
                         write_output_file(malware_sample, is_packed, "entropy", header_name, file_dict)
                 if dll_activated:
                     file_dict = {"initial_iat": panda_output_dict["dll_inital_iat"], "dynamically_loaded_dll": panda_output_dict["dll_dynamically_loaded_dll"],
-                                 "calls_nbr": panda_output_dict["dll_call_nbrs"], "GetProcAddress_functions": panda_output_dict["dll_GetProcAddress_returns"]}
+                                 "calls_nbr": panda_output_dict["dll_call_nbrs"], "GetProcAddress_functions": panda_output_dict["dll_GetProcAddress_returns"],
+                                 "function_inital_iat": panda_output_dict["function_inital_iat"]}
                     write_output_file(malware_sample, is_packed, "syscalls", "syscalls", file_dict)
                 if sections_activated:
                     file_dict = {"section_perms_changed": panda_output_dict["section_perms_changed"]}
                     write_output_file(malware_sample, is_packed, "sections_perms", "sections_perms", file_dict)
+                if first_bytes_activated:
+                    file_dict = {"executed_bytes_list": panda_output_dict["executed_bytes_list"]}
+                    write_output_file(malware_sample, is_packed, "first_bytes", "first_bytes", file_dict)
                 result[is_packed].append(malware_sample)
                 print_info("      -- The result of the analysis is: {}\n".format("PACKED" if is_packed else "NOT-PACKED"))
     print_info("++ Finished")
