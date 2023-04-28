@@ -1,8 +1,8 @@
-# ABCD
+# PANDI
 
-ABCD is a ***packing detection*** solution built on top of PANDA (https://github.com/panda-re/panda), a platform for Architecture-Neutral Dynamic Analysis.
+PANDI is a ***packing detection*** solution built on top of PANDA (https://github.com/panda-re/panda), a platform for Architecture-Neutral Dynamic Analysis.
 TODO   
-ABCD is currently developed at UCLouvain (Belgium) and is available under [TODO] license.
+PANDI is currently developed at UCLouvain (Belgium) and is available under [TODO] license.
 
 ## How to use
 ***First, put the malware(s) that need to be analysed under the folder "payload".***  
@@ -56,7 +56,12 @@ You can find it by following this link: https://uclouvain-my.sharepoint.com/:u:/
 Once the virtual machine is downloaded, the process can be launched as any docker-compose project.
 
 ## Usage
-The five possible options of this software can be combined but at least one must be enabled.
+The five possible options of this software can be combined but at least one must be enabled.  
+Some parameters can be tweaked to modify the behavior of the whole software. These parameters are:
+- `--build`
+- `--silent` (or `panda_silent=False`)
+- `--debug` (or `panda_debug=False`)
+- `--executable` (or `panda_executable=None`)
 
 ### Memory Write&Execution Detection
 >This option must be activated with the `--memcheck` parameter on `launch.py` or by modifying the `docker-compose.yml` file by adding `panda_memcheck=True` in the environment variables.
@@ -69,6 +74,11 @@ This analysis works by using the `@panda.cb_virt_mem_after_write` callback from 
 written. Then a second callback `@panda.cb_before_block_exec` will be responsible to detect
 when a previously written address (known by the first syscall) is currently executed.
 
+Some parameters can be tweaked to modify the behavior of this option. These parameters are:
+- `--max_memory_write_exe_list_length=1000` (or `panda_max_memory_write_exe_list_length=1000`) define the maximum length
+of the writen-then-executed list before cutting the analysis. This allows to reduce the execution time when there is enough
+data. The default value of this parameter is a length of 1000.
+
 ### Entropy Analysis
 >This option must be activated with the `--entropy` parameter on `launch.py` or by modifying the `docker-compose.yml` file by adding `panda_entropy=True` in the environment variables.
 
@@ -76,6 +86,14 @@ The entropy analysis will gather the entropy of each of the program section at e
 (with a defined granularity). These entropy points will then be used to construct some statistics to determine, with the
 help of some machine learning, if the analysed software is packed or not.   
 The entry point of the software and the entry point of the unpacked software (if any) will be also used to extract statistics.
+
+Some parameters can be tweaked to modify the behavior of this option. These parameters are:
+- `--entropy_granularity=1000` (or `panda_entropy_granularity=1000`) define the granularity to adopt between two analysis
+of the entropy. We use the basic blocks of PANDA as our metric and analysis only a portion of them to minimize the time
+needed to finish the whole analysis. Here we defined that the entropy is computed every 1000 basic block.
+- `--max_entropy_list_length=0` (or `panda_max_entropy_list_length=0`) define the maximum length of the list containing
+the computed entropy of the sections. If the length of this list reach the limit, the entropy analysis is stopped. The
+default value for this parameter is 0, meaning that the list can be any size.
 
 A file is generated with the result of the entropy analysis under the `./output` directory. It is also possible to 
 see a visual representation of the entropy points can also be obtained by running the python script 
@@ -108,6 +126,17 @@ for the next analysis. If you don't want to reuse the previously computed result
 
 This option must be used in parallel to the [Syscalls Analysis](#syscalls-analysis) section. It will benefit from the discovered
 DLLs to perform its analysis. This option will not work alone.
+
+Some parameters can be tweaked to modify the behavior of this option. These parameters are:
+- `--dll_discover_granularity=1000` (or `panda_dll_discover_granularity=1000`) define the granularity to adopt between 
+two analysis of the loaded DLL in-memory. This parameter is exactly like the one for the entropy. The default value is 
+an analysis every 1000 basic block.
+- `--max_dll_discover_fail=10000` (or `panda_max_dll_discover_fail=10000`) define the maximum number of failure authorized 
+before shutting down the discovery of DLL functions. Not every function of the DLL are mapped in-memory when loading the DLL
+meaning that some will throw an error when trying to get information about them, this is the type of failure we see here.
+The default value is fixed at 10 000 errors.
+- `--force_dll_rediscover=False` (or `panda_force_dll_rediscover=False`) force the re-discovery of DLL functions even if
+it was already done in the past, like explained above.
 
 ### Section Permissions Modification Detection
 >This option must be activated with the `--section_perms` parameter on `launch.py` or by modifying the `docker-compose.yml` file by adding `panda_section_perms=True` in the environment variables.
