@@ -48,7 +48,7 @@ class PEInformations:
                         print(entry.dll, entry.struct.FirstThunk + headers[0], entry.__dict__, flush=True)
                         for imp in entry.imports:
                             #self.imports[imp.name] = int(imp.address, base=16) + 0x200
-                            if imp.name != None:
+                            if imp.name is not None:
                                 self.imports[imp.name.decode()] = imp.address
                             print("\t", imp.name, imp.address, hex(imp.address), flush=True)
                             #print(hex(imp.address), imp.name, hex(imp.struct_table.Function), imp.__dict__, flush=True)
@@ -130,10 +130,10 @@ class EntropyAnalysis:
                     break
                 except ValueError:
                     size -= 0x1000
-            if header_name == self.pe_info.unpacked_EP_section[0] and size == mapping_size:
+            """if header_name == self.pe_info.unpacked_EP_section[0] and size == mapping_size:
                 if not os.path.isfile("/addon/test.exe"):
                     with open("/addon/test.exe", 'wb') as file:
-                        file.write(m[header_name])
+                        file.write(m[header_name])"""
         for import_name in self.pe_info.imports:
             if self.pe_info.imports[import_name] < self.pe_info.get_higher_section_addr():
                 try:
@@ -336,7 +336,7 @@ def read_output_file(file_name, is_packed, type_of_analysis, debug_name):
 class SectionPermissionCheck:
     class VirtualMemoryCheck:
         def __init__(self):
-            self.__waiting = {"baseaddress": None, "permissions": None}
+            self.__waiting = {"baseaddress": None, "permissions": None, "section": None}
             self.translation = {"PAGE_EXECUTE": {"execute": True, "read": False, "write": False},
                                 "PAGE_EXECUTE_READ": {"execute": True, "read": True, "write": False},
                                 "PAGE_EXECUTE_READWRITE": {"execute": True, "read": True, "write": True},
@@ -353,9 +353,15 @@ class SectionPermissionCheck:
         def add_permissions(self, perms):
             self.__waiting["permissions"] = self.translation[perms]
 
+        def add_section(self, section_name):
+            self.__waiting["section"] = section_name
+
+        def get_section(self):
+            return self.__waiting["section"]
+
         def get_infos(self):
             data = self.__waiting
-            self.__waiting = {"baseaddress": None, "permissions": None}
+            self.__waiting = {"baseaddress": None, "permissions": None, "section": None}
             return data
 
     def __init__(self, initial_perms):
@@ -365,6 +371,9 @@ class SectionPermissionCheck:
 
     def add_baseaddress(self, addr):
         self.__virtual_memory_check.add_baseaddress(addr)
+
+    def add_section(self, section_name):
+        self.__virtual_memory_check.add_section(section_name)
 
     def add_permissions(self, perms):
         self.__virtual_memory_check.add_permissions(perms)

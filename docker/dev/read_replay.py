@@ -77,7 +77,7 @@ def virt_mem_after_read(env, pc, addr, size, buf):
 
 @panda.cb_before_block_exec(enabled=False)
 def before_block_exec(env, tb):
-    global entropy_activated, memcheck_activated, dll_activated, last_section_executed, section_perms_check
+    global entropy_activated, memcheck_activated, dll_activated, last_section_executed, section_perms_check, first_bytes_activated
     if not panda.in_kernel(env) and panda.current_asid(env) == sample_asid:
         current_position = "Unknown"
         current_section = None
@@ -111,6 +111,7 @@ def before_block_exec(env, tb):
         # ===================================== DLL CHECK =====================================
         if dll_activated and pe_infos.headers:
             if pc in pe_infos.imports.values() or pc in dynamic_dll.dynamic_dll_methods.values() or pc in discovered_dll.dll.keys():
+                function_name = ""
                 if pc in pe_infos.imports.values():  # If current addr correspond to a DLL method call addr
                     function_name = pe_infos.get_import_name_from_addr(pc).decode()
                     current_position = f"IAT_DLL({function_name})"
@@ -153,6 +154,20 @@ def before_block_exec(env, tb):
                 if is_debug:
                     print(f"(BLOCK_EXEC) MEASURED ENTROPY AT PC {hex(pc)} (Detected position: {current_position})", flush=True)
             block_num += 1
+        # ================================ RECORD FIRST BYTES ================================
+        if first_bytes_activated:
+            global executed_bytes_list
+            if len(executed_bytes_list) < 64:
+                section_name = pe_infos.get_section_from_addr(pc)
+                if section_name:
+                    bytes = panda.virtual_memory_read(env, pc, tb.size)
+                    size = min(tb.size, 64 - len(executed_bytes_list))
+                    for i in range(size):
+                        executed_bytes_list.append(bytes[i])
+            else:
+                if is_debug:
+                    print(f"(BLOCK_EXEC) DETECTED FIRST BYTES: {executed_bytes_list}", flush=True)
+                first_bytes_activated = False
     # =============================== EXEC WRITE DETECTION ===============================
     if memcheck_activated:
         # TODO : Use current_process to detect DLL ? (hint if process taskhost.exe is called)
@@ -169,19 +184,6 @@ def before_block_exec(env, tb):
                 memcheck_activated = False
             if is_debug:
                 print(f"(BLOCK_EXEC) FOUND PREVIOUSLY WRITTEN ADDR BEING EXECUTED! PC: {hex(pc)}", flush=True)
-    # =============================== RECORD FIRST BYTES ===============================
-    if first_bytes_activated:
-        global executed_bytes_list
-        if len(executed_bytes_list) < 64:
-            pc = panda.arch.get_pc(env)
-            section_name = pe_infos.get_section_from_addr(pc)
-            if section_name :
-                bytes = panda.virtual_memory_read(env, pc, tb.size)
-                size = min(tb.size,64-len(executed_bytes_list))
-                for i in range(size):
-                    executed_bytes_list.append(bytes[i])
-        else:
-            first_bytes_activated = False
     # ====================================================================================
     if not force_complete_replay and not entropy_activated and not memcheck_activated and not dll_activated and not section_activated and not first_bytes_activated:
         try:
@@ -211,18 +213,19 @@ def on_all_sys_enter2(env, pc, call, rp):
                             if syscall_name == "NtProtectVirtualMemory":
                                 if arg_name.decode() == "BaseAddress":
                                     section_name = pe_infos.get_section_from_addr(syscall_result)
+                                    print("SECTIONN", hex(syscall_result), section_name)
                                     if section_name:
                                         section_perms_check.add_baseaddress(syscall_result)
                                 elif arg_name.decode() == "NewProtectWin32":
-                                    section_name = pe_infos.get_section_from_addr(syscall_result)
-                                    if section_name:
-                                        section_perms_check.add_permissions(syscall_result)
-                                        data = section_perms_check.get_infos()
-                                        if data and data["baseadress"] and data["permissions"]:
-                                            last_perms = section_perms_check.get_last_section_permission(section_name)
-                                            for access in ["execute", "read", "write"]:
-                                                if last_perms[access] != data["permissions"][access]:
-                                                    section_perms_check.add_section_permission(env.rr_guest_instr_count, section_name, access, data["permissions"][access])
+                                    section_perms_check.add_permissions(syscall_result)
+                                    data = section_perms_check.get_infos()
+                                    if data and data["baseaddress"] and data["permissions"] and data["section"]:
+                                        last_perms = section_perms_check.get_last_section_permission(data["section"])
+                                        for access in ["execute", "read", "write"]:
+                                            if last_perms[access] != data["permissions"][access]:
+                                                section_perms_check.add_section_permission(env.rr_guest_instr_count, data["section"], access, data["permissions"][access])
+                                                if is_debug:
+                                                    print(f"(SYSCALLS2) DETECTED PERM CHANGE: {section_perms_check.permissions_modifications}", flush=True)
                     except Exception:
                         pass
 
@@ -262,7 +265,7 @@ if __name__ == "__main__":
             discovered_dll.get_discovered_dlls()
         result = {"memory_write_exe_list": "", "entropy": "", "entropy_initial_oep": "", "entropy_unpacked_oep": "",
                   "dll_inital_iat": "","function_inital_iat": "", "dll_dynamically_loaded_dll": "", "dll_call_nbrs": "",
-                  "dll_GetProcAddress_returns": "", "section_perms_changed": "","executed_bytes_list":""}
+                  "dll_GetProcAddress_returns": "", "section_perms_changed": "", "executed_bytes_list": ""}
         try:
             if entropy_activated or memcheck_activated or dll_activated or section_activated or first_bytes_activated:
                 panda.run_replay("/replay/sample")
@@ -276,8 +279,8 @@ if __name__ == "__main__":
                 result["dll_call_nbrs_generic"] = dll_analysis.get_generic_functions()
                 result["dll_call_nbrs_malicious"] = dll_analysis.get_malicious_functions()
                 result["dll_GetProcAddress_returns"] = list(dynamic_dll.dynamic_dll_methods.keys())
-                result["executed_bytes_list"] = executed_bytes_list
                 result["section_perms_changed"] = section_perms_check.permissions_modifications
+                result["executed_bytes_list"] = executed_bytes_list
                 with open("replay_result.pickle", "wb") as file:
                     pickle.dump(result, file, protocol=pickle.HIGHEST_PROTOCOL)
         except Exception as e:
