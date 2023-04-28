@@ -113,7 +113,7 @@ def before_block_exec(env, tb):
             if pc in pe_infos.imports.values() or pc in dynamic_dll.dynamic_dll_methods.values() or pc in discovered_dll.dll.keys():
                 function_name = ""
                 if pc in pe_infos.imports.values():  # If current addr correspond to a DLL method call addr
-                    function_name = pe_infos.get_import_name_from_addr(pc).decode()
+                    function_name = pe_infos.get_import_name_from_addr(pc)
                     current_position = f"IAT_DLL({function_name})"
                     dll_analysis.increase_call_nbr("iat", function_name)
                 elif pc in dynamic_dll.dynamic_dll_methods.values():
@@ -213,9 +213,9 @@ def on_all_sys_enter2(env, pc, call, rp):
                             if syscall_name == "NtProtectVirtualMemory":
                                 if arg_name.decode() == "BaseAddress":
                                     section_name = pe_infos.get_section_from_addr(syscall_result)
-                                    print("SECTIONN", hex(syscall_result), section_name)
                                     if section_name:
                                         section_perms_check.add_baseaddress(syscall_result)
+                                        section_perms_check.add_section(section_name)
                                 elif arg_name.decode() == "NewProtectWin32":
                                     section_perms_check.add_permissions(syscall_result)
                                     data = section_perms_check.get_infos()

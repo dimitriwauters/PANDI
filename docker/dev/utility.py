@@ -9,8 +9,10 @@ class PEInformations:
     def __init__(self, panda, process_name):
         self.panda = panda
         self.process_name = process_name
+        self.image_base = 0x0
+        self.optional_header_size = 0x0
         self.headers = {}  # {"UPX0": (0x401000, 0x401000), ...}
-        self.headers_perms = {}  # {"UPX0": {"uninitialized_data": True, "execute": False, "read": False, "write": False}}
+        self.headers_perms = {"OPTIONAL_HEADER": {"uninitialized_data": False, "execute": False, "read": True, "write": False}}
         self.imports = {}
         self.higher_section_addr = None
         self.initial_EP = None
@@ -22,6 +24,8 @@ class PEInformations:
         # Flags: IMAGE_SCN_CNT_UNINITIALIZED_DATA, IMAGE_SCN_MEM_EXECUTE, IMAGE_SCN_MEM_READ, IMAGE_SCN_MEM_WRITE
         try:
             self.pe = pefile.PE(f"/payload/{self.process_name}")
+            self.image_base = self.pe.OPTIONAL_HEADER.ImageBase
+            self.optional_header_size = self.pe.OPTIONAL_HEADER.SectionAlignment
             entry_point = self.pe.OPTIONAL_HEADER.AddressOfEntryPoint
             headers = (self.pe.OPTIONAL_HEADER.ImageBase, self.pe.OPTIONAL_HEADER.ImageBase + self.pe.OPTIONAL_HEADER.SizeOfHeaders)
             for section in self.pe.sections:
@@ -61,6 +65,8 @@ class PEInformations:
             print(e)
 
     def get_section_from_addr(self, addr):
+        if self.image_base <= addr <= self.image_base + self.optional_header_size:
+            return "OPTIONAL_HEADER"
         for section in self.headers.keys():
             if self.headers[section][0] <= addr <= self.headers[section][1]:
                 return section
