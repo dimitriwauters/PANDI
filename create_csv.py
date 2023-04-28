@@ -25,6 +25,14 @@ def create_features():
                 "variance_total_entropy":0.0,
                 "stdev_total_entropy":0.0,
                 
+                "max_oep_section_entropy":0.0,
+                "min_oep_section_entropy":0.0,
+                "delta_oep_section_entropy":0.0,
+                "mean_oep_section_entropy":0.0,
+                "median_oep_section_entropy":0.0,
+                "variance_oep_section_entropy":0.0,
+                "stdev_oep_section_entropy":0.0,
+                
                 "initial_iat_dll":0,
                 "initial_iat_func":0,
                 "initial_iat_called_generic_func":0,
@@ -107,8 +115,15 @@ if __name__ == "__main__":
                          features["stdev_total_entropy"] = statistics.stdev(y)
                          
                      else:
-                         print("This file is not used for the features: " + filename)
-                         
+                         if result["has_inital_eop"]:
+                             y = result["entropy"][1]
+                             features["max_oep_section_entropy"] = max(y)
+                             features["min_oep_section_entropy"] = min(y)
+                             features["delta_oep_section_entropy"] = max(y) - min(y)
+                             features["mean_oep_section_entropy"] = statistics.mean(y)
+                             features["median_oep_section_entropy"] = statistics.median(y)
+                             features["variance_oep_section_entropy"] = statistics.variance(y)
+                             features["stdev_oep_section_entropy"] = statistics.stdev(y)
                          
          with open("features.csv", "a") as f:
              f.write(",".join(str(x) for x in features.values()))

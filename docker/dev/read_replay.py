@@ -52,7 +52,7 @@ def virt_mem_after_write(env, pc, addr, size, buf):
                 current_addr = addr + i
                 if current_addr not in memory_write_list:
                     memory_write_list[current_addr] = []
-                if is_debug:
+                if is_debug and False:
                     print(f"(VIRT_MEM_WRITE) ADDR WRITTEN: {hex(current_addr)} | PC DOING WRITE: {hex(pc)} ({ffi.string(current_process.name).decode()})", flush=True)
                 memory_write_list[current_addr].append(pc)
     # ==================================== PERMS CHECK ====================================
