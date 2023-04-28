@@ -52,7 +52,7 @@ def virt_mem_after_write(env, pc, addr, size, buf):
                 current_addr = addr + i
                 if current_addr not in memory_write_list:
                     memory_write_list[current_addr] = []
-                if is_debug:
+                if is_debug and False:
                     print(f"(VIRT_MEM_WRITE) ADDR WRITTEN: {hex(current_addr)} | PC DOING WRITE: {hex(pc)} ({ffi.string(current_process.name).decode()})", flush=True)
                 memory_write_list[current_addr].append(pc)
     # ==================================== PERMS CHECK ====================================
@@ -113,7 +113,7 @@ def before_block_exec(env, tb):
             if pc in pe_infos.imports.values() or pc in dynamic_dll.dynamic_dll_methods.values() or pc in discovered_dll.dll.keys():
                 function_name = ""
                 if pc in pe_infos.imports.values():  # If current addr correspond to a DLL method call addr
-                    function_name = pe_infos.get_import_name_from_addr(pc).decode()
+                    function_name = pe_infos.get_import_name_from_addr(pc)
                     current_position = f"IAT_DLL({function_name})"
                     dll_analysis.increase_call_nbr("iat", function_name)
                 elif pc in dynamic_dll.dynamic_dll_methods.values():
