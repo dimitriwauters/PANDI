@@ -1,6 +1,7 @@
 import string
 import time
 import sys
+import random
 
 from pandare import Panda, panda_expect
 
@@ -57,7 +58,18 @@ def run_cmd():
     #send_command(panda, "start /w /D \"C:\\Users\\IEUser\\Desktop\" sample.exe & shutdown /s /t 0 /f")
     panda.disable_tb_chaining()
     panda.run_monitor_cmd('begin_record /replay/sample')
+
+    # TODO: Use mouse movements to prevent SplashScreen blocking (ex: Demo version of Themida) ?
+    """panda.run_monitor_cmd('mouse_move 100 -100')
+    for i in range(60):
+        panda.run_monitor_cmd(f'mouse_move {random.randint(-10, 10)} {random.randint(-10, 10)}')
+        if i % 2 == 0:
+            panda.run_monitor_cmd('mouse_button 1')
+            time.sleep(.075)
+            panda.run_monitor_cmd('mouse_button 0')
+        time.sleep(1)"""
     time.sleep(60)  # 600 - TODO: Need to find way of detecting end of process or timeout (40 min)
+
     #time.sleep(1800)  # 1800 seconds = 30 minutes
     panda.run_monitor_cmd('end_record')
     time.sleep(5)

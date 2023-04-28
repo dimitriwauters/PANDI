@@ -16,7 +16,8 @@ It allows the user to easily modify the parameters of the software, as shown bel
 It will also download automatically the Windows VM needed to run PANDA and build the Docker image.
 ```
 usage: launch.py [-h] [--build] [--silent] [--debug] [--executable EXECUTABLE] [--force_complete_replay] [--max_memory_write_exe_list_length MAX_MEMORY_WRITE_EXE_LIST_LENGTH] [--entropy_granularity ENTROPY_GRANULARITY]
-                 [--max_entropy_list_length MAX_ENTROPY_LIST_LENGTH] [--memcheck] [--entropy]
+                 [--max_entropy_list_length MAX_ENTROPY_LIST_LENGTH] [--dll_discover_granularity DLL_DISCOVER_GRANULARITY] [--max_dll_discover_fail MAX_DLL_DISCOVER_FAIL] [--force_dll_rediscover] [--memcheck] [--entropy] [--dll]
+                 [--dll_discover] [--sections_perms] [--first_bytes]
 
 options:
   -h, --help            show this help message and exit
@@ -33,8 +34,18 @@ options:
                         number of basic blocks between samples. Lower numbers result in higher run times
   --max_entropy_list_length MAX_ENTROPY_LIST_LENGTH
                         maximum length of entropy list before exiting
+  --dll_discover_granularity DLL_DISCOVER_GRANULARITY
+                        maximum length of the returned list before exiting
+  --max_dll_discover_fail MAX_DLL_DISCOVER_FAIL
+                        maximum length of the returned list before exiting
+  --force_dll_rediscover
+                        read the replay until the end
   --memcheck            activate memory write and executed detection
   --entropy             activate entropy analysis
+  --dll                 activate syscalls analysis
+  --dll_discover        activate dll discovering system
+  --sections_perms      activate sections permission analysis
+  --first_bytes         activate first bytes analysis
 ```
 
 ### docker-compose
@@ -107,6 +118,11 @@ to write in the section if it was previously announced at read-only.
 
 It allows to know if the section permissions have been changed during the execution of the program, giving an indication
 that the sample may perform an unpacking procedure.
+
+### First Bytes Extraction
+>This option must be activated with the `--first_bytes` parameter on `launch.py` or by modifying the `docker-compose.yml` file by adding `panda_first_bytes=True` in the environment variables.
+
+TODO
 
 ## Output (results)
 TODO

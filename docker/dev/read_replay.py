@@ -180,8 +180,10 @@ def before_block_exec(env, tb):
                 size = min(tb.size,64-len(executed_bytes_list))
                 for i in range(size):
                     executed_bytes_list.append(bytes[i])
+        else:
+            first_bytes_activated = False
     # ====================================================================================
-    if not force_complete_replay and not entropy_activated and not memcheck_activated and not dll_activated and not section_activated:
+    if not force_complete_replay and not entropy_activated and not memcheck_activated and not dll_activated and not section_activated and not first_bytes_activated:
         try:
             panda.end_replay()
         except:
@@ -221,7 +223,6 @@ def on_all_sys_enter2(env, pc, call, rp):
                                             for access in ["execute", "read", "write"]:
                                                 if last_perms[access] != data["permissions"][access]:
                                                     section_perms_check.add_section_permission(env.rr_guest_instr_count, section_name, access, data["permissions"][access])
-                                print("SECTION MODIF: ", section_perms_check.permissions_modifications)
                     except Exception:
                         pass
 
