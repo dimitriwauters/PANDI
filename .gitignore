@@ -2,3 +2,4 @@
 .packers
 .debug
 replay
+*.csv

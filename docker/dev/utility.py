@@ -6,8 +6,9 @@ import hashlib
 import string
 
 class PEInformations:
-    def __init__(self, panda, process_name):
+    def __init__(self, panda, process_path, process_name):
         self.panda = panda
+        self.process_path = process_path
         self.process_name = process_name
         self.image_base = 0x0
         self.optional_header_size = 0x0
@@ -23,7 +24,7 @@ class PEInformations:
     def init_headers(self, callback_entropy, callback_iat):
         # Flags: IMAGE_SCN_CNT_UNINITIALIZED_DATA, IMAGE_SCN_MEM_EXECUTE, IMAGE_SCN_MEM_READ, IMAGE_SCN_MEM_WRITE
         try:
-            self.pe = pefile.PE(f"/payload/{self.process_name}")
+            self.pe = pefile.PE(f"{self.process_path}/{self.process_name}")
             self.image_base = self.pe.OPTIONAL_HEADER.ImageBase
             self.optional_header_size = self.pe.OPTIONAL_HEADER.SectionAlignment
             entry_point = self.pe.OPTIONAL_HEADER.AddressOfEntryPoint

@@ -10,6 +10,7 @@ ffi = cffi.FFI()
 panda = Panda(qcow='/root/.panda/vm.qcow2', mem="3G", os_version="windows-32-7sp0", extra_args="-nographic -loadvm 1")
 panda.load_plugin("syscalls2", {"load-info": True})
 
+malware_sample_path = ""
 malware_sample = ""
 sample_asid = None
 malware_pid = set()
@@ -253,9 +254,10 @@ def asid_changed(env, old_asid, new_asid):
 
 
 if __name__ == "__main__":
-    if len(sys.argv) > 1:
-        malware_sample = sys.argv[1]
-        pe_infos = PEInformations(panda, malware_sample)
+    if len(sys.argv) > 2:
+        malware_sample_path = sys.argv[1]
+        malware_sample = sys.argv[2]
+        pe_infos = PEInformations(panda, malware_sample_path, malware_sample)
         entropy_analysis = EntropyAnalysis(panda, pe_infos)
         dynamic_dll = DynamicLoadedDLL(panda, pe_infos)
         discovered_dll = SearchDLL(panda)
