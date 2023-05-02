@@ -64,16 +64,17 @@ def create_features():
         
     for fun in MALICIOUS_FUNCTIONS:
         features[fun] = 0
-        
-    with open("features.csv", "w") as f:
-        f.write(",".join(features.keys()))
-        f.write("\n")
+
     return features
     
     
 if __name__ == "__main__":
-    directory = "output/packed"
-    #directory = "output/not-packed"
+    # directory = "output/packed"
+    directory = "output/not-packed"
+    features = create_features()
+    with open("features.csv", "w") as f:
+        f.write(",".join(features.keys()))
+        f.write("\n")
     for sample in os.listdir(directory):
          sample_dir = os.path.join(directory, sample)
          features = create_features()
@@ -141,10 +142,11 @@ if __name__ == "__main__":
                          features["max_total_entropy"] = max(y)
                          features["min_total_entropy"] = min(y)
                          features["delta_total_entropy"] = max(y) - min(y)
-                         features["mean_total_entropy"] = statistics.mean(y)
-                         features["median_total_entropy"] = statistics.median(y)
-                         features["variance_total_entropy"] = statistics.variance(y)
-                         features["stdev_total_entropy"] = statistics.stdev(y)
+                         if len(y) > 1:
+                             features["mean_total_entropy"] = statistics.mean(y)
+                             features["median_total_entropy"] = statistics.median(y)
+                             features["variance_total_entropy"] = statistics.variance(y)
+                             features["stdev_total_entropy"] = statistics.stdev(y)
                          
                      else:
                          if "has_inital_eop" in result and result["has_inital_eop"]:
@@ -152,10 +154,11 @@ if __name__ == "__main__":
                              features["max_oep_section_entropy"] = max(y)
                              features["min_oep_section_entropy"] = min(y)
                              features["delta_oep_section_entropy"] = max(y) - min(y)
-                             features["mean_oep_section_entropy"] = statistics.mean(y)
-                             features["median_oep_section_entropy"] = statistics.median(y)
-                             features["variance_oep_section_entropy"] = statistics.variance(y)
-                             features["stdev_oep_section_entropy"] = statistics.stdev(y)
+                             if len(y) > 1:
+                                 features["mean_oep_section_entropy"] = statistics.mean(y)
+                                 features["median_oep_section_entropy"] = statistics.median(y)
+                                 features["variance_oep_section_entropy"] = statistics.variance(y)
+                                 features["stdev_oep_section_entropy"] = statistics.stdev(y)
                          
          with open("features.csv", "a") as f:
              f.write(",".join(str(x) for x in features.values()))
