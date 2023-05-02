@@ -44,6 +44,7 @@ if __name__ == "__main__":
         if ".exe" in malware_sample:
             is_packed = False
             panda_output_dict = None
+            start_time = time.time()
             print_info(f"  -- Processing file '{malware_sample_path}/{malware_sample}'")
             for i in range(MAX_TRIES):
                 panda_run_output, panda_dll_output, panda_replay_output = None, None, None
@@ -98,7 +99,7 @@ if __name__ == "__main__":
                             addr = elem[1] % 134  # Modulo x86, the length of an instruction
                             print(addr)"""
                         is_packed = True
-                    write_output_file(malware_sample, is_packed, "memcheck", "memcheck", {"memory_write_exe_list": memory_write_list})
+                    write_output_file(malware_sample, "memcheck", "memcheck", {"memory_write_exe_list": memory_write_list})
                     result[is_packed].append(malware_sample)
                 if entropy_activated:
                     entropy = panda_output_dict["entropy"]
@@ -121,21 +122,23 @@ if __name__ == "__main__":
                         file_dict = {"entropy": [entropy_val[header_name][0], entropy_val[header_name][1]],
                                      "has_inital_eop": has_initial_eop, "initial_eop": entropy_initial_oep[1],
                                      "has_unpacked_eop": has_unpacked_eop, "unpacked_eop": entropy_unpacked_oep[1]}
-                        write_output_file(malware_sample, is_packed, "entropy", header_name, file_dict)
+                        write_output_file(malware_sample, "entropy", header_name, file_dict)
                 if dll_activated:
                     file_dict = {"initial_iat": panda_output_dict["dll_inital_iat"], "dynamically_loaded_dll": panda_output_dict["dll_dynamically_loaded_dll"],
                                  "call_nbrs_generic": panda_output_dict["dll_call_nbrs_generic"], "call_nbrs_malicious": panda_output_dict["dll_call_nbrs_malicious"],
                                  "GetProcAddress_functions": panda_output_dict["dll_GetProcAddress_returns"],
                                  "function_inital_iat": panda_output_dict["function_inital_iat"]}
-                    write_output_file(malware_sample, is_packed, "syscalls", "syscalls", file_dict)
+                    write_output_file(malware_sample, "syscalls", "syscalls", file_dict)
                 if sections_activated:
                     file_dict = {"section_perms_changed": panda_output_dict["section_perms_changed"]}
-                    write_output_file(malware_sample, is_packed, "sections_perms", "sections_perms", file_dict)
+                    write_output_file(malware_sample, "sections_perms", "sections_perms", file_dict)
                 if first_bytes_activated:
                     file_dict = {"executed_bytes_list": panda_output_dict["executed_bytes_list"]}
-                    write_output_file(malware_sample, is_packed, "first_bytes", "first_bytes", file_dict)
+                    write_output_file(malware_sample, "first_bytes", "first_bytes", file_dict)
                 result[is_packed].append(malware_sample)
-                print_info("      -- The result of the analysis is: {}\n".format("PACKED" if is_packed else "NOT-PACKED"))
+                end_time = time.time()
+                write_output_file(malware_sample, "time", "time", {"start": start_time, "end": end_time})
+                print_info("      -- The result of the analysis is: {} (Took {} seconds to complete)\n".format("PACKED" if is_packed else "NOT-PACKED", end_time - start_time))
     print_info("++ Finished")
 
     # Show results

@@ -12,8 +12,8 @@ panda.load_plugin("syscalls2", {"load-info": True})
 
 malware_sample_path = ""
 malware_sample = ""
-sample_asid = None
-malware_pid = set()
+sample_asid = set()
+sample_pid = set()
 memory_write_exe_list = {}
 memory_write_list = {}
 executed_bytes_list = []
@@ -48,7 +48,7 @@ def virt_mem_after_write(env, pc, addr, size, buf):
     if memcheck_activated:
         global memory_write_list
         current_process = panda.plugins['osi'].get_current_process(env)
-        if current_process.pid in malware_pid:
+        if current_process.pid in sample_pid:
             for i in range(size - 1):
                 current_addr = addr + i
                 if current_addr not in memory_write_list:
@@ -77,7 +77,7 @@ def virt_mem_after_read(env, pc, addr, size, buf):
 @panda.cb_before_block_exec(enabled=False)
 def before_block_exec(env, tb):
     global entropy_activated, memcheck_activated, dll_activated, last_section_executed, section_perms_check, first_bytes_activated
-    if not panda.in_kernel(env) and panda.current_asid(env) == sample_asid:
+    if not panda.in_kernel(env) and panda.current_asid(env) in sample_asid:
         current_position = "Unknown"
         current_section = None
         pc = panda.arch.get_pc(env)
@@ -195,7 +195,7 @@ def on_all_sys_enter2(env, pc, call, rp):
     # ===================================== DLL CHECK =====================================
     # ==================================== PERMS CHECK ====================================
     if dll_activated or section_activated:
-        if panda.current_asid(env) == sample_asid:
+        if panda.current_asid(env) in sample_asid:
             if call != panda.ffi.NULL:
                 syscall_name = panda.ffi.string(call.name).decode()
                 for arg_idx in range(call.nargs):
@@ -231,25 +231,27 @@ def on_all_sys_enter2(env, pc, call, rp):
 
 @panda.cb_asid_changed()
 def asid_changed(env, old_asid, new_asid):
-    global malware_pid, sample_asid
+    global sample_pid, sample_asid
     for process in panda.get_processes(env):
-        process_name = ffi.string(process.name)
-        if "sample" in process_name.decode() or "cmd" in process_name.decode():
-            if process.pid not in malware_pid:
-                print(f"SAMPLE FOUND: {process_name} ({process.pid})", flush=True)
-                malware_pid.add(process.pid)
-                if not panda.is_callback_enabled("virt_mem_after_write") and "sample" in process_name.decode():
-                    sample_asid = new_asid
-                    if memcheck_activated or section_activated:
+        process_name = ffi.string(process.name).decode()
+        if len(sample_pid) == 0 and "cmd" in process_name:
+            print(f"INITIAL CMD FOUND: {process_name} ({process.pid} - {process.ppid})", flush=True)
+            sample_pid.add(process.pid)
+        elif "sample" in process_name:
+            if process.ppid in sample_pid:
+                if process.pid not in sample_pid:
+                    sample_pid.add(process.pid)
+                if new_asid not in sample_asid:
+                    print(f"SAMPLE FOUND: {process_name} ({process.pid} - {process.ppid} | {new_asid})", flush=True)
+                    sample_asid.add(new_asid)
+                    if not panda.is_callback_enabled("virt_mem_after_write") and (
+                            memcheck_activated or section_activated):
                         panda.enable_memcb()
                         panda.enable_callback("virt_mem_after_write")
                         if section_activated:
                             panda.enable_callback("virt_mem_after_read")
-                    panda.enable_callback("before_block_exec")
-
-    # TODO: Take into account possible subprocess of sample.exe
-    if len(malware_pid) >= 2:
-        panda.disable_callback("asid_changed")
+                    if not panda.is_callback_enabled("before_block_exec"):
+                        panda.enable_callback("before_block_exec")
     return 0
 
 
