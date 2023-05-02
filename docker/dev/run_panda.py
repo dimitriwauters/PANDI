@@ -53,6 +53,7 @@ def run_cmd():
     panda.run_monitor_cmd("change ide1-cd0 /payload.iso")
     time.sleep(3)
     panda.run_monitor_cmd("sendkey esc")
+    send_command(panda, "xcopy D:\\additional-dll C:\\Users\\IEUser\\Desktop")
     send_command(panda, "copy D:\\" + malware_sample + " C:\\Users\\IEUser\\Desktop\\sample.exe")
     send_command(panda, "start /w /D \"C:\\Users\\IEUser\\Desktop\" sample.exe")
     #send_command(panda, "start /w /D \"C:\\Users\\IEUser\\Desktop\" sample.exe & shutdown /s /t 0 /f")
@@ -68,11 +69,13 @@ def run_cmd():
             time.sleep(.075)
             panda.run_monitor_cmd('mouse_button 0')
         time.sleep(1)"""
-    time.sleep(60)  # 600 - TODO: Need to find way of detecting end of process or timeout (40 min)
+    time.sleep(80)  # 600 - TODO: Need to find way of detecting end of process or timeout (40 min)
 
     #time.sleep(1800)  # 1800 seconds = 30 minutes
     panda.run_monitor_cmd('end_record')
     time.sleep(5)
+    panda.run_monitor_cmd('screendump /replay/sample_screen')
+    time.sleep(1)
     panda.end_analysis()
 
 

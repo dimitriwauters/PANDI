@@ -6,5 +6,6 @@ services:
       dockerfile: Dockerfile
     volumes:
       - "./payload:/payload"
+      - "./additional-dll:/additional-dll"
     environment:
       - panda_silent=False

@@ -4,6 +4,7 @@ import json
 import sys
 import time
 import pickle
+import shutil
 from utility import write_debug_file, write_output_file
 
 MAX_TRIES = 3
@@ -35,21 +36,21 @@ if __name__ == "__main__":
     print_info("++ Launching")
     result = {True: [], False: []}
     if force_executable is None:
-        files_to_analyse = [os.path.join(root, name) for root, dirs, files in os.walk("/payload") for name in files if name.endswith(".exe")]
+        files_to_analyse = [os.path.join(root, name) for root, dirs, files in os.walk("/payload") for name in files if name.lower().endswith(".exe")]
     else:
         files_to_analyse = [force_executable]
     for sample_path in files_to_analyse:
         malware_sample_path = os.path.dirname(sample_path)
         malware_sample = os.path.basename(sample_path)
-        if ".exe" in malware_sample:
+        if ".exe" in malware_sample.lower():
             is_packed = False
             panda_output_dict = None
-            start_time = time.time()
             print_info(f"  -- Processing file '{malware_sample_path}/{malware_sample}'")
             for i in range(MAX_TRIES):
                 panda_run_output, panda_dll_output, panda_replay_output = None, None, None
                 print_info("    -- Creating ISO")
-                subprocess.run(["genisoimage", "-max-iso9660-filenames", "-RJ", "-o", "payload.iso", f"{malware_sample_path}/{malware_sample}"], capture_output=True)
+                paths = [f"{malware_sample_path}/{malware_sample}", "/dll"]
+                subprocess.run(["genisoimage", "-max-iso9660-filenames", "-RJ", "-o", "/payload.iso"] + paths, capture_output=True)
                 print_info("    -- Running PANDA")
                 try:
                     panda_run_output = subprocess.run(["python3", "/addon/run_panda.py", malware_sample], capture_output=True)
@@ -67,6 +68,7 @@ if __name__ == "__main__":
                         print_info(e.stderr.decode())
                         sys.exit(e.returncode)
                 time.sleep(2)
+                start_time = time.time()
                 print_info("    -- Analysing PANDA recording (might take a while)")
                 try:
                     panda_replay_output = subprocess.run(["python3", "/addon/read_replay.py", malware_sample_path, malware_sample], capture_output=True)
@@ -138,7 +140,8 @@ if __name__ == "__main__":
                 result[is_packed].append(malware_sample)
                 end_time = time.time()
                 write_output_file(malware_sample, "time", "time", {"start": start_time, "end": end_time})
-                print_info("      -- The result of the analysis is: {} (Took {} seconds to complete)\n".format("PACKED" if is_packed else "NOT-PACKED", end_time - start_time))
+                shutil.copy("/replay/sample_screen", f"/output/{malware_sample}/screenshot")
+                print_info("      -- The result of the analysis is: {} (Took {} seconds to analyse)\n".format("PACKED" if is_packed else "NOT-PACKED", end_time - start_time))
     print_info("++ Finished")
 
     # Show results

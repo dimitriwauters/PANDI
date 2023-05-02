@@ -10,6 +10,7 @@ services:
       - "./docker/dev:/addon"
       - "./docker/.panda:/root/.panda"
       - "./payload:/payload"
+      - "./additional-dll:/dll/additional-dll"
       - "./output:/output"
       - "./.debug:/debug"
       - "./replay:/replay"
@@ -18,10 +19,10 @@ services:
       - panda_memcheck=False
       - panda_entropy=False
       - panda_dll=True
-      - panda_dll_discover=True
+      - panda_dll_discover=False
       - panda_section_perms=False
       - panda_first_bytes=True
       #- panda_executable=upx_ADExplorer.exe
       #- panda_max_entropy_list_length=50
-    command: "python3 /addon/read_replay.py /payload sync.exe"
+    #command: "python3 /addon/read_replay.py /payload file-pdf-load.exe"
     #command: "python3 /addon/discover_dlls.py"

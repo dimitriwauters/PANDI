@@ -257,6 +257,7 @@ class SearchDLL:
         self.resolved_dll_ordinal = {}
         with open('/root/.panda/vm.qcow2', 'rb') as vm_file:
             self.vm_hash = hashlib.sha256(vm_file.read(8192)).hexdigest()
+        self.external_dll = [name for root, dirs, files in os.walk("/dll/additional-dll") for name in files if name.lower().endswith(".dll")]
 
     def search_dlls(self, env, specific_dll=None, specific_function=None):
         found = False
@@ -303,15 +304,21 @@ class SearchDLL:
         if not os.path.isdir("/payload/dll"):
             os.makedirs("/payload/dll")
         with open(f"/payload/dll/{self.vm_hash}_discovered_dlls.pickle", 'wb') as file:
-            pickle.dump(self.dll, file, protocol=pickle.HIGHEST_PROTOCOL)
+            pickle.dump({"discovered_dll": self.dll, "external_dll": self.external_dll}, file, protocol=pickle.HIGHEST_PROTOCOL)
 
     def get_discovered_dlls(self):
         if self.is_savefile_exist():
             with open(f"/payload/dll/{self.vm_hash}_discovered_dlls.pickle", 'rb') as file:
-                self.dll = pickle.load(file)
+                data = pickle.load(file)
+                self.dll = data["discovered_dll"]
+                self.external_dll = data["external_dll"]
 
     def is_savefile_exist(self):
-        return os.path.isfile(f"/payload/dll/{self.vm_hash}_discovered_dlls.pickle")
+        if os.path.isfile(f"/payload/dll/{self.vm_hash}_discovered_dlls.pickle"):
+            with open(f"/payload/dll/{self.vm_hash}_discovered_dlls.pickle", 'rb') as file:
+                data = pickle.load(file)
+                return len(list(set(self.external_dll) - set(data["external_dll"]))) == 0
+        return False
 
 
 def write_debug_file(file_name, process_name, process_output):
