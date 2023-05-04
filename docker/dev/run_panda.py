@@ -6,7 +6,7 @@ import random
 from pandare import Panda, panda_expect
 
 malware_sample = ""
-panda = Panda(qcow='/root/.panda/vm.qcow2', mem="3G", os_version="windows-32-7sp0", extra_args="-show-cursor -vnc 0.0.0.0:0,to=99,id=default -loadvm 1")
+panda = Panda(qcow='/root/.panda/vm.qcow2', mem="3G", os_version="windows-32-7sp0", extra_args="-show-cursor -vnc 0.0.0.0:0,to=99,id=default -net nic -net user,restrict=on -loadvm 1")
 
 
 def send_command(p, cmd):
@@ -53,6 +53,7 @@ def run_cmd():
     panda.run_monitor_cmd("change ide1-cd0 /payload.iso")
     time.sleep(3)
     panda.run_monitor_cmd("sendkey esc")
+    time.sleep(1)
     send_command(panda, "xcopy D:\\additional-dll C:\\Users\\IEUser\\Desktop")
     send_command(panda, "copy D:\\" + malware_sample + " C:\\Users\\IEUser\\Desktop\\sample.exe")
     send_command(panda, "start /w /D \"C:\\Users\\IEUser\\Desktop\" sample.exe")
@@ -69,7 +70,7 @@ def run_cmd():
             time.sleep(.075)
             panda.run_monitor_cmd('mouse_button 0')
         time.sleep(1)"""
-    time.sleep(80)  # 600 - TODO: Need to find way of detecting end of process or timeout (40 min)
+    time.sleep(60)  # 600 - TODO: Need to find way of detecting end of process or timeout (40 min)
 
     #time.sleep(1800)  # 1800 seconds = 30 minutes
     panda.run_monitor_cmd('end_record')

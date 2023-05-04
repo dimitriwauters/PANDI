@@ -10,7 +10,8 @@ Then, there is two main ways of running this program:
 - Use launch.py
 - Use the docker-compose provided
 
-### Launch.py
+### Launching the packing detector
+#### Launch.py
 This script is an interface between the Docker implementation of PANDA and the host machine.  
 It allows the user to easily modify the parameters of the software, as shown below.  
 It will also download automatically the Windows VM needed to run PANDA and build the Docker image.
@@ -48,12 +49,15 @@ options:
   --first_bytes         activate first bytes analysis
 ```
 
-### docker-compose
+#### docker-compose
 Before using the provided docker-compose, the virtual machine that will be used to perform the analysis need to be downloaded.   
 You can find it by following this link: https://uclouvain-my.sharepoint.com/:u:/g/personal/d_wauters_uclouvain_be/EZXz0Kf1U_VEhQSddwlPOI4B_oKqEwY-HmxC5Nv6Wd4WSA?e=09Zg7E   
 (or by performing the procedure of creating a new virtual machine)
 
 Once the virtual machine is downloaded, the process can be launched as any docker-compose project.
+
+### Importing additional DLLs
+TODO
 
 ## Usage
 The five possible options of this software can be combined but at least one must be enabled.  
@@ -185,5 +189,12 @@ For example: https://az792536.vo.msecnd.net/vms/VMBuild_20150916/VirtualBox/IE8/
 * Transform the virtual machine into a QEMU compatible one (if not already)   
 For example with `qemu-utils` on Linux
 * Launch the virtual machine, open a prompt and make a snapshot of the machine (on the slot 1)
+  * To perform that, a script has been made. It can be launched with `docker-compose -f docker-compose.newvm.yml run pandare`
+  * You can add, prior launching the script, some file you will want to launch on the VM. Those files can be put a folder called `new-vm`
+  * Now connect to the VM with a VNC viewer (like Remmina) trough the IP of the docker container
+  * Install the program you want and finish by opening a prompt
+  * Once its done, type `finished` in the console (where you typed `docker-compose -f docker-compose.newvm.yml run pandare`)
+  * The VM is now ready to be used !
+  * (If you don't want to save the modification you have done, you can type anything in the console and the snapshot will not be saved)
 * Name the virtual machine as `vm.qcow2` and place the file under the folder `./docker/.panda`
 * ENJOY

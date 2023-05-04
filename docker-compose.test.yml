@@ -18,7 +18,7 @@ services:
       - panda_debug=True
       - panda_memcheck=False
       - panda_entropy=False
-      - panda_dll=True
+      - panda_dll=False
       - panda_dll_discover=False
       - panda_section_perms=False
       - panda_first_bytes=True

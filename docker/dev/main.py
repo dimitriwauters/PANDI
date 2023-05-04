@@ -41,8 +41,8 @@ if __name__ == "__main__":
         files_to_analyse = [force_executable]
     for sample_path in files_to_analyse:
         malware_sample_path = os.path.dirname(sample_path)
-        malware_sample = os.path.basename(sample_path)
-        if ".exe" in malware_sample.lower():
+        malware_sample = os.path.basename(sample_path).lower()
+        if ".exe" in malware_sample:
             is_packed = False
             panda_output_dict = None
             print_info(f"  -- Processing file '{malware_sample_path}/{malware_sample}'")
@@ -101,7 +101,7 @@ if __name__ == "__main__":
                             addr = elem[1] % 134  # Modulo x86, the length of an instruction
                             print(addr)"""
                         is_packed = True
-                    write_output_file(malware_sample, "memcheck", "memcheck", {"memory_write_exe_list": memory_write_list})
+                    write_output_file(malware_sample, "memcheck", "memcheck", {"memory_write_exe_list": memory_write_list, "result": is_packed})
                     result[is_packed].append(malware_sample)
                 if entropy_activated:
                     entropy = panda_output_dict["entropy"]
@@ -140,7 +140,7 @@ if __name__ == "__main__":
                 result[is_packed].append(malware_sample)
                 end_time = time.time()
                 write_output_file(malware_sample, "time", "time", {"start": start_time, "end": end_time})
-                shutil.copy("/replay/sample_screen", f"/output/{malware_sample}/screenshot")
+                shutil.copy("/replay/sample_screen", f"/output/{malware_sample.split('.exe')[0]}/screenshot")
                 print_info("      -- The result of the analysis is: {} (Took {} seconds to analyse)\n".format("PACKED" if is_packed else "NOT-PACKED", end_time - start_time))
     print_info("++ Finished")
 

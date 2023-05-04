@@ -1,0 +1,17 @@
+version: "3.3"
+services:
+  pandare:
+    build:
+      context: ./docker
+      dockerfile: Dockerfile
+    ports:
+      - "4443:5900"
+    volumes:
+      - "./docker/dev:/addon"
+      - "./docker/.panda:/root/.panda"
+      - "./new-vm:/root/new-vm"
+    environment:
+      - panda_debug=True
+    command: python3 /addon/create_vm.py
+    stdin_open: true
+    tty: true
