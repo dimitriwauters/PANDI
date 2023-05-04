@@ -136,7 +136,7 @@ if __name__ == "__main__":
                     file_dict = {"section_perms_changed": panda_output_dict["section_perms_changed"]}
                     write_output_file(malware_sample, "sections_perms", "sections_perms", file_dict)
                 if first_bytes_activated:
-                    file_dict = {"executed_bytes_list": panda_output_dict["executed_bytes_list"]}
+                    file_dict = {"executed_bytes_list": panda_output_dict["executed_bytes_list"],"initial_EP":panda_output_dict["initial_EP"],"real_EP":panda_output_dict["real_EP"]}
                     write_output_file(malware_sample, "first_bytes", "first_bytes", file_dict)
                 result[is_packed].append(malware_sample)
                 end_time = time.time()

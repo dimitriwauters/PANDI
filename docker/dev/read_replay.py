@@ -17,6 +17,7 @@ sample_pid = set()
 memory_write_exe_list = {}
 memory_write_list = {}
 executed_bytes_list = []
+real_ep = -1
 
 force_complete_replay = os.getenv("panda_force_complete_replay", default=False) == "True"
 max_memory_write_exe_list_length = int(os.getenv("panda_max_memory_write_exe_list_length", default=1000))
@@ -155,10 +156,13 @@ def before_block_exec(env, tb):
             block_num += 1
         # ================================ RECORD FIRST BYTES ================================
         if first_bytes_activated:
-            global executed_bytes_list
+            global executed_bytes_list, real_ep
             if len(executed_bytes_list) < 64:
                 section_name = pe_infos.get_section_from_addr(pc)
+                print(section_name)
                 if section_name:
+                    if real_ep == -1:
+                        real_ep = pc
                     bytes = panda.virtual_memory_read(env, pc, tb.size)
                     size = min(tb.size, 64 - len(executed_bytes_list))
                     for i in range(size):
@@ -268,7 +272,7 @@ if __name__ == "__main__":
             discovered_dll.get_discovered_dlls()
         result = {"memory_write_exe_list": "", "entropy": "", "entropy_initial_oep": "", "entropy_unpacked_oep": "",
                   "dll_inital_iat": "","function_inital_iat": "", "dll_dynamically_loaded_dll": "", "dll_call_nbrs": "",
-                  "dll_GetProcAddress_returns": "", "section_perms_changed": "", "executed_bytes_list": ""}
+                  "dll_GetProcAddress_returns": "", "section_perms_changed": "", "executed_bytes_list": "","real_EP":"", "initial_EP":""}
         try:
             if entropy_activated or memcheck_activated or dll_activated or section_activated or first_bytes_activated:
                 panda.run_replay("/replay/sample")
@@ -284,6 +288,8 @@ if __name__ == "__main__":
                 result["dll_GetProcAddress_returns"] = list(dynamic_dll.dynamic_dll_methods.keys())
                 result["section_perms_changed"] = section_perms_check.permissions_modifications
                 result["executed_bytes_list"] = executed_bytes_list
+                result["initial_EP"] = pe_infos.initial_EP
+                result["real_EP"] = real_ep
                 with open("replay_result.pickle", "wb") as f:
                     pickle.dump(result, f, protocol=pickle.HIGHEST_PROTOCOL)
         except Exception as e:
