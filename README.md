@@ -1,6 +1,6 @@
 # PANDI
 
-PANDI is a ***packing detection*** solution built on top of PANDA (https://github.com/panda-re/panda), a platform for Architecture-Neutral Dynamic Analysis.
+PANDI is a ***dynamic packing detection*** solution built on top of PANDA (https://github.com/panda-re/panda), a platform for Architecture-Neutral Dynamic Analysis.
 TODO   
 PANDI is currently developed at UCLouvain (Belgium) and is available under [TODO] license.
 
@@ -57,7 +57,10 @@ You can find it by following this link: https://uclouvain-my.sharepoint.com/:u:/
 Once the virtual machine is downloaded, the process can be launched as any docker-compose project.
 
 ### Importing additional DLLs
-TODO
+There is the possibility to add new DLL that are not present in the virtual machine.
+This might be interesting in the case of a sample that need a specific DLL that is not standard.   
+To add these DLLs to the virtual machine, you can simply put them in the `additional-dll` folder and they will be loaded
+in parallel to the sample.
 
 ## Usage
 The five possible options of this software can be combined but at least one must be enabled.  
@@ -84,7 +87,8 @@ of the writen-then-executed list before cutting the analysis. This allows to red
 data. The default value of this parameter is a length of 1000.
 
 ### Entropy Analysis
->This option must be activated with the `--entropy` parameter on `launch.py` or by modifying the `docker-compose.yml` file by adding `panda_entropy=True` in the environment variables.
+>This option must be activated with the `--entropy` parameter on `launch.py` or by modifying the `docker-compose.yml` file by adding `panda_entropy=True` in the environment variables.   
+> This option will need the help of machine learning to give the result.
 
 The entropy analysis will gather the entropy of each of the program section at every execution of a basic block
 (with a defined granularity). These entropy points will then be used to construct some statistics to determine, with the
@@ -104,7 +108,8 @@ see a visual representation of the entropy points can also be obtained by runnin
 `entropy_graph.py [SOFTWARE_NAME] [SECTION_TO_SHOW] [IS_DETECTED_AS_PACKED]`.
 
 ### Syscalls Analysis
->This option must be activated with the `--dll` parameter on `launch.py` or by modifying the `docker-compose.yml` file by adding `panda_dll=True` in the environment variables.
+>This option must be activated with the `--dll` parameter on `launch.py` or by modifying the `docker-compose.yml` file by adding `panda_dll=True` in the environment variables.   
+> This option will need the help of machine learning to give the result.
 
 This analysis will recover the initially imported function by recovering the IAT (Import Address Table) of the software
 and raising an event when the address currently executed correspond to an imported function. It also detects (thanks to
@@ -143,7 +148,8 @@ The default value is fixed at 10 000 errors.
 it was already done in the past, like explained above.
 
 ### Section Permissions Modification Detection
->This option must be activated with the `--section_perms` parameter on `launch.py` or by modifying the `docker-compose.yml` file by adding `panda_section_perms=True` in the environment variables.
+>This option must be activated with the `--section_perms` parameter on `launch.py` or by modifying the `docker-compose.yml` file by adding `panda_section_perms=True` in the environment variables.   
+> This option will need the help of machine learning to give the result.
 
 This analysis make an additional verification regarding the headers of the executable. It recovers the initial permissions
 of the different sections at the beginning of the execution and tries at multiple times during the execution of the sample
@@ -153,7 +159,8 @@ It allows to know if the section permissions have been changed during the execut
 that the sample may perform an unpacking procedure.
 
 ### First Bytes Extraction
->This option must be activated with the `--first_bytes` parameter on `launch.py` or by modifying the `docker-compose.yml` file by adding `panda_first_bytes=True` in the environment variables.
+>This option must be activated with the `--first_bytes` parameter on `launch.py` or by modifying the `docker-compose.yml` file by adding `panda_first_bytes=True` in the environment variables.   
+> This option will need the help of machine learning to output the result.
 
 TODO
 

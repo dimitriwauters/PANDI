@@ -109,7 +109,7 @@ def before_block_exec(env, tb):
                     section_perms_check.add_section_permission(env.rr_guest_instr_count, section_name, "execute", True)
         # ===================================== DLL CHECK =====================================
         if dll_activated and pe_infos.headers:
-            if pc in pe_infos.imports.values() or pc in dynamic_dll.dynamic_dll_methods.values() or pc in discovered_dll.dll.keys():
+            if is_known_dll_addr(pc):
                 function_name = ""
                 if pc in pe_infos.imports.values():  # If current addr correspond to a DLL method call addr
                     function_name = pe_infos.get_import_name_from_addr(pc)
@@ -169,20 +169,19 @@ def before_block_exec(env, tb):
                 first_bytes_activated = False
     # =============================== EXEC WRITE DETECTION ===============================
     if memcheck_activated:
-        # TODO : Use current_process to detect DLL ? (hint if process taskhost.exe is called)
         global memory_write_list, memory_write_exe_list
         pc = panda.arch.get_pc(env)
-        if pc in memory_write_list:
-            pc_json = str(pc)
-            if pc_json not in memory_write_exe_list:
-                memory_write_exe_list[pc_json] = []
+        if pc in memory_write_list and not is_known_dll_addr(pc):
+            if pc not in memory_write_exe_list:
+                memory_write_exe_list[pc] = []
             for addr in memory_write_list[pc]:
-                memory_write_exe_list[pc_json].append(addr)
+                memory_write_exe_list[pc].append(addr)
             memory_write_list[pc] = []
             if max_memory_write_exe_list_length != 0 and len(memory_write_exe_list) >= max_memory_write_exe_list_length:
                 memcheck_activated = False
             if is_debug:
-                print(f"(BLOCK_EXEC) FOUND PREVIOUSLY WRITTEN ADDR BEING EXECUTED! PC: {hex(pc)}", flush=True)
+                section_name = pe_infos.get_section_from_addr(pc)
+                print(f"(BLOCK_EXEC) FOUND PREVIOUSLY WRITTEN ADDR BEING EXECUTED! PC: {hex(pc)} | Section: {section_name}", flush=True)
     # ====================================================================================
     if not force_complete_replay and not entropy_activated and not memcheck_activated and not dll_activated and not section_activated and not first_bytes_activated:
         try:
@@ -254,6 +253,8 @@ def asid_changed(env, old_asid, new_asid):
                         panda.enable_callback("before_block_exec")
     return 0
 
+def is_known_dll_addr(addr):
+    return addr in pe_infos.imports.values() or addr in dynamic_dll.dynamic_dll_methods.values() or addr in discovered_dll.dll.keys()
 
 if __name__ == "__main__":
     if len(sys.argv) > 2:

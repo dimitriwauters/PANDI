@@ -5,6 +5,7 @@ import sys
 import time
 import pickle
 import shutil
+import re
 from utility import write_debug_file, write_output_file
 
 MAX_TRIES = 3
@@ -41,8 +42,8 @@ if __name__ == "__main__":
         files_to_analyse = [force_executable]
     for sample_path in files_to_analyse:
         malware_sample_path = os.path.dirname(sample_path)
-        malware_sample = os.path.basename(sample_path).lower()
-        if ".exe" in malware_sample:
+        malware_sample = os.path.basename(sample_path)
+        if ".exe" in malware_sample.lower():
             is_packed = False
             panda_output_dict = None
             print_info(f"  -- Processing file '{malware_sample_path}/{malware_sample}'")
@@ -140,7 +141,7 @@ if __name__ == "__main__":
                 result[is_packed].append(malware_sample)
                 end_time = time.time()
                 write_output_file(malware_sample, "time", "time", {"start": start_time, "end": end_time})
-                shutil.copy("/replay/sample_screen", f"/output/{malware_sample.split('.exe')[0]}/screenshot")
+                shutil.copy("/replay/sample_screen", f"/output/{re.split('.exe', malware_sample, flags=re.IGNORECASE)[0]}/screenshot")
                 print_info("      -- The result of the analysis is: {} (Took {} seconds to analyse)\n".format("PACKED" if is_packed else "NOT-PACKED", end_time - start_time))
     print_info("++ Finished")
 
