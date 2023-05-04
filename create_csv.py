@@ -18,59 +18,60 @@ def read_file(path):
 
 def create_features():
     features = {"name":"",
-                "write_execute_size":0,
+                "write_execute_size":-1,
                 
-                "max_total_entropy":0.0,
-                "min_total_entropy":0.0,
-                "delta_total_entropy":0.0,
-                "mean_total_entropy":0.0,
-                "median_total_entropy":0.0,
-                "variance_total_entropy":0.0,
-                "stdev_total_entropy":0.0,
+                "number_total_entropy":-1,
+                "max_total_entropy":-1.0,
+                "min_total_entropy":-1.0,
+                "delta_total_entropy":-1.0,
+                "mean_total_entropy":-1.0,
+                "median_total_entropy":-1.0,
+                "variance_total_entropy":-1.0,
+                "stdev_total_entropy":-1.0,
                 
-                "max_oep_section_entropy":0.0,
-                "min_oep_section_entropy":0.0,
-                "delta_oep_section_entropy":0.0,
-                "mean_oep_section_entropy":0.0,
-                "median_oep_section_entropy":0.0,
-                "variance_oep_section_entropy":0.0,
-                "stdev_oep_section_entropy":0.0,
+                "number_oep_section_entropy":-1,
+                "max_oep_section_entropy":-1.0,
+                "min_oep_section_entropy":-1.0,
+                "delta_oep_section_entropy":-1.0,
+                "mean_oep_section_entropy":-1.0,
+                "median_oep_section_entropy":-1.0,
+                "variance_oep_section_entropy":-1.0,
+                "stdev_oep_section_entropy":-1.0,
                 
-                "initial_iat_dll":0,
-                "initial_iat_func":0,
+                "initial_iat_dll":-1,
+                "initial_iat_func":-1,
                 "initial_iat_malicious_func":0,
                 
-                "reconstructed_iat_dll":0,
-                "reconstructed_iat_func":0,
+                "reconstructed_iat_dll":-1,
+                "reconstructed_iat_func":-1,
                 "reconstructed_iat_malicious_func":0,
                 
-                "initial_iat_called_generic_func":0,
-                "initial_iat_called_malicious_func":0,
-                "initial_iat_called_all_func":0,
+                "initial_iat_called_generic_func":-1,
+                "initial_iat_called_malicious_func":-1,
+                "initial_iat_called_all_func":-1,
                 
-                "dynamic_called_generic_func":0,
-                "dynamic_called_malicious_func":0,
-                "dynamic_called_all_func":0,
+                "dynamic_called_generic_func":-1,
+                "dynamic_called_malicious_func":-1,
+                "dynamic_called_all_func":-1,
                 
-                "discovered_called_generic_func":0,
-                "discovered_called_malicious_func":0,
-                "discovered_called_all_func":0,
+                "discovered_called_generic_func":-1,
+                "discovered_called_malicious_func":-1,
+                "discovered_called_all_func":-1,
                 
-                "number_add_exec_permission":0,
-                "number_add_write_permisison":0}
+                "number_add_exec_permission":-1,
+                "number_add_write_permisison":-1}
                 
     for i in range(64):
-        features[f"executed_byte_{i}"] = 0
+        features[f"executed_byte_{i}"] = -1
         
     for fun in MALICIOUS_FUNCTIONS:
         features[fun] = 0
-
+        
     return features
     
     
 if __name__ == "__main__":
-    # directory = "output/packed"
-    directory = "output/not-packed"
+    directory = "output/"
     features = create_features()
     with open("features.csv", "w") as f:
         f.write(",".join(features.keys()))
@@ -139,6 +140,7 @@ if __name__ == "__main__":
                              
                      elif filename == "TOTAL.pickle":
                          y = result["entropy"][1]
+                         features["number_total_entropy"] = len(y)
                          features["max_total_entropy"] = max(y)
                          features["min_total_entropy"] = min(y)
                          features["delta_total_entropy"] = max(y) - min(y)
@@ -151,6 +153,7 @@ if __name__ == "__main__":
                      else:
                          if "has_inital_eop" in result and result["has_inital_eop"]:
                              y = result["entropy"][1]
+                             features["number_oep_section_entropy"] = len(y)
                              features["max_oep_section_entropy"] = max(y)
                              features["min_oep_section_entropy"] = min(y)
                              features["delta_oep_section_entropy"] = max(y) - min(y)
