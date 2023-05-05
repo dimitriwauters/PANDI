@@ -7,19 +7,20 @@ from argparse import ArgumentParser
 
 parser = ArgumentParser()
 parser.add_argument("--build", action='store_true', help="rebuild panda image", default=False)
-parser.add_argument("--silent", action='store_true', help="only print the result in JSON format", default=False)
+parser.add_argument("--silent", action='store_true', help="don't print anything, just create output files", default=False)
 
-parser.add_argument("--debug", action='store_true', help="activate verbose mode", default=False)
-parser.add_argument("--executable", type=str, help="force the selection of one software", default=None)
+parser.add_argument("--debug", action='store_true', help="activate verbose mode in debug folder", default=False)
+parser.add_argument("--executable", type=str, help="force the selection of only one sample to analyse", default=None)
 
-parser.add_argument("--force_complete_replay", action='store_true', help="read the replay until the end", default=False)
-parser.add_argument("--max_memory_write_exe_list_length", type=int, help="maximum length of the returned list before exiting", default=1000)
-parser.add_argument("--entropy_granularity", type=int, help="number of basic blocks between samples. Lower numbers result in higher run times", default=1000)
-parser.add_argument("--max_entropy_list_length", type=int, help="maximum length of entropy list before exiting", default=0)
+parser.add_argument("--force_complete_replay", action='store_true', help="force to read the replay until the end", default=False)
+parser.add_argument("--max_memory_write_exe_list_length", type=int, help="maximum length of the memory write&executed list before stopping", default=1000)
+parser.add_argument("--entropy_granularity", type=int, help="number of basic blocks between computation of entropy. Lower numbers result in higher run times", default=1000)
+parser.add_argument("--max_entropy_list_length", type=int, help="maximum length of entropy list before stopping", default=0)
 
-parser.add_argument("--dll_discover_granularity", type=int, help="maximum length of the returned list before exiting", default=1000)
-parser.add_argument("--max_dll_discover_fail", type=int, help="maximum length of the returned list before exiting", default=10000)
-parser.add_argument("--force_dll_rediscover", action='store_true', help="read the replay until the end", default=False)
+parser.add_argument("--dll_discover_granularity", type=int, help="number of basic blocks between tries to read DLL functions. Lower numbers result in higher run times", default=1000)
+parser.add_argument("--max_dll_discover_fail", type=int, help="maximum number of reading fail before stopping discovering process", default=10000)
+parser.add_argument("--force_dll_rediscover", action='store_true', help="force to re-do the DLL discovering process and overite the existing save", default=False)
+parser.add_argument("--discovered_dll_granularity", type=int, help="number of basic blocks between register of discovered DLL calls. Lower numbers result in higher run times", default=1000)
 
 parser.add_argument("--memcheck", action='store_true', help="activate memory write and executed detection", default=False)
 parser.add_argument("--entropy", action='store_true', help="activate entropy analysis", default=False)

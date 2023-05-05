@@ -65,10 +65,10 @@ in parallel to the sample.
 ## Usage
 The five possible options of this software can be combined but at least one must be enabled.  
 Some parameters can be tweaked to modify the behavior of the whole software. These parameters are:
-- `--build`
-- `--silent` (or `panda_silent=False`)
-- `--debug` (or `panda_debug=False`)
-- `--executable` (or `panda_executable=None`)
+- `--build`: rebuild the docker image
+- `--silent` (or `panda_silent=False`): don't print anything in stdout
+- `--debug` (or `panda_debug=False`): save the output of the replay to `.debug` folder (verbose)
+- `--executable` (or `panda_executable=None`): choose one executable of the `payload` folder to be executed
 
 ### Memory Write&Execution Detection
 >This option must be activated with the `--memcheck` parameter on `launch.py` or by modifying the `docker-compose.yml` file by adding `panda_memcheck=True` in the environment variables.
@@ -102,10 +102,6 @@ needed to finish the whole analysis. Here we defined that the entropy is compute
 - `--max_entropy_list_length=0` (or `panda_max_entropy_list_length=0`) define the maximum length of the list containing
 the computed entropy of the sections. If the length of this list reach the limit, the entropy analysis is stopped. The
 default value for this parameter is 0, meaning that the list can be any size.
-
-A file is generated with the result of the entropy analysis under the `./output` directory. It is also possible to 
-see a visual representation of the entropy points can also be obtained by running the python script 
-`entropy_graph.py [SOFTWARE_NAME] [SECTION_TO_SHOW] [IS_DETECTED_AS_PACKED]`.
 
 ### Syscalls Analysis
 >This option must be activated with the `--dll` parameter on `launch.py` or by modifying the `docker-compose.yml` file by adding `panda_dll=True` in the environment variables.   
@@ -144,6 +140,16 @@ an analysis every 1000 basic block.
 before shutting down the discovery of DLL functions. Not every function of the DLL are mapped in-memory when loading the DLL
 meaning that some will throw an error when trying to get information about them, this is the type of failure we see here.
 The default value is fixed at 10 000 errors.
+- `--discovered_dll_granularity=1000` (or `panda_discovered_dll_granularity=1000`) define the granularity to adopt between 
+two discoveries of discovered DLL during the execution of the sample. To reduce the time needed to complete the analysis
+not all discovered dll are logged. This granularity can be changed with this parameter, its default value is set to 1000.
+If you want to log every call to a discovered DLL, you can set this value to 0.   
+Some discovered DLL will always be logged, the ones we consider are potentially malicious, like:
+  - GetProcAddress
+  - LoadLibrary
+  - ExitProcess
+  - GetModuleHandle
+  - ...
 - `--force_dll_rediscover=False` (or `panda_force_dll_rediscover=False`) force the re-discovery of DLL functions even if
 it was already done in the past, like explained above.
 
@@ -160,12 +166,16 @@ that the sample may perform an unpacking procedure.
 
 ### First Bytes Extraction
 >This option must be activated with the `--first_bytes` parameter on `launch.py` or by modifying the `docker-compose.yml` file by adding `panda_first_bytes=True` in the environment variables.   
-> This option will need the help of machine learning to output the result.
+> This option will need the help of machine learning to give the result.
 
 TODO
 
 ## Output (results)
-TODO
+An output directory containing the data collected under the name `ouput` is created when the analysis ends. This directory
+contains a subfolder for each sample analysed, with the name of the sample as the name of the subfolder.   
+These results can be read easily as they are packed with the python module `pickle` but a script is provided for convenience.
+This script is called `output_read.py` and take the name of the sample you want to analyse in parameter. It will then
+print the result collected by each activated option during the analysis.
 
 ## Evaluation - Examples
 TODO

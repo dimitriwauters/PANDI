@@ -141,6 +141,7 @@ if __name__ == "__main__":
                 result[is_packed].append(malware_sample)
                 end_time = time.time()
                 write_output_file(malware_sample, "time", "time", {"start": start_time, "end": end_time})
+                write_output_file(malware_sample, "", "result", {"is_packed": is_packed})
                 shutil.copy("/replay/sample_screen", f"/output/{re.split('.exe', malware_sample, flags=re.IGNORECASE)[0]}/screenshot")
                 print_info("      -- The result of the analysis is: {} (Took {} seconds to analyse)\n".format("PACKED" if is_packed else "NOT-PACKED", end_time - start_time))
     print_info("++ Finished")

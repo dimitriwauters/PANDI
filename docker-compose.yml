@@ -5,6 +5,7 @@ services:
       context: ./docker
       dockerfile: Dockerfile
     volumes:
+      - "/.debug:/debug"
       - "./payload:/payload"
       - "./additional-dll:/additional-dll"
     environment:

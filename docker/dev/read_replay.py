@@ -12,8 +12,8 @@ panda.load_plugin("syscalls2", {"load-info": True})
 
 malware_sample_path = ""
 malware_sample = ""
-sample_asid = set()
 sample_pid = set()
+cmd_pid = None
 memory_write_exe_list = {}
 memory_write_list = {}
 executed_bytes_list = []
@@ -30,6 +30,7 @@ dll_activated = os.getenv("panda_dll", default=False) == "True"
 dll_discover_activated = os.getenv("panda_dll_discover", default=False) == "True"
 section_activated = os.getenv("panda_section_perms", default=False) == "True"
 first_bytes_activated = os.getenv("panda_first_bytes", default=False) == "True"
+discovered_dll_granularity = int(os.getenv("panda_discovered_dll_granularity", default=1000))
 
 block_num = entropy_granularity
 entropy_analysis = None
@@ -41,6 +42,7 @@ dll_analysis = DLLCallAnalysis()
 dynamic_dll = None
 pe_infos = None
 discovered_dll = None
+discovered_dll_counter = discovered_dll_granularity
 
 
 @panda.cb_virt_mem_after_write(enabled=False)
@@ -78,7 +80,8 @@ def virt_mem_after_read(env, pc, addr, size, buf):
 @panda.cb_before_block_exec(enabled=False)
 def before_block_exec(env, tb):
     global entropy_activated, memcheck_activated, dll_activated, last_section_executed, section_perms_check, first_bytes_activated
-    if not panda.in_kernel(env) and panda.current_asid(env) in sample_asid:
+    current_process = panda.plugins['osi'].get_current_process(env)
+    if not panda.in_kernel(env) and current_process.pid in sample_pid:
         current_position = "Unknown"
         current_section = None
         pc = panda.arch.get_pc(env)
@@ -110,6 +113,7 @@ def before_block_exec(env, tb):
                     section_perms_check.add_section_permission(env.rr_guest_instr_count, section_name, "execute", True)
         # ===================================== DLL CHECK =====================================
         if dll_activated and pe_infos.headers:
+            global discovered_dll_counter
             if is_known_dll_addr(pc):
                 function_name = ""
                 if pc in pe_infos.imports.values():  # If current addr correspond to a DLL method call addr
@@ -122,6 +126,12 @@ def before_block_exec(env, tb):
                     dll_analysis.increase_call_nbr("dynamic", function_name)
                 elif pc in discovered_dll.dll.keys():
                     function_name = discovered_dll.get_dll_method_name_from_addr(pc)
+                    """if dll_analysis.is_function_malicious(function_name) or discovered_dll_counter >= discovered_dll_granularity:
+                        current_position = f"DISCOVERED_DLL({function_name})"
+                        function_name = function_name.split('-')[0]
+                        dll_analysis.increase_call_nbr("discovered", function_name)
+                        discovered_dll_counter = 0
+                    discovered_dll_counter += 1"""
                     current_position = f"DISCOVERED_DLL({function_name})"
                     function_name = function_name.split('-')[0]
                     dll_analysis.increase_call_nbr("discovered", function_name)
@@ -134,32 +144,30 @@ def before_block_exec(env, tb):
                     elif "LoadLibrary" in function_name:
                         dynamic_dll.add_dll(syscall_result["name"])
 
-                if is_debug:
+                #if is_debug and current_position is not "Unknown":
+                if is_debug and ("DISCOVERED_DLL" not in current_position or dll_analysis.is_function_malicious(function_name)):
                     print(f"(BLOCK_EXEC) DETECTED DLL AT PC {hex(pc)} (Detected position: {current_position})", flush=True)
         # =================================== ENTROPY CHECK ===================================
         if entropy_activated and pe_infos.headers:
             global block_num
             if block_num > entropy_granularity:
+                block_num = 0
                 memory = entropy_analysis.read_memory(env)
                 if memory:
                     entropy_analysis.analyse_entropy(env, memory)
-                    block_num = 0
                     if max_entropy_list_length != 0 and len(entropy_analysis.entropy) >= max_entropy_list_length:
                         entropy_activated = False
-                        for name in pe_infos.imports:
-                            imp = pe_infos.imports[name]
-                            print(name, hex(imp))
                     if current_section is not None:
                         current_position = f"SECTION({current_section})"
-                if is_debug:
-                    print(f"(BLOCK_EXEC) MEASURED ENTROPY AT PC {hex(pc)} (Detected position: {current_position})", flush=True)
+
+                    if is_debug:
+                        print(f"(BLOCK_EXEC) MEASURED ENTROPY AT PC {hex(pc)} (Detected position: {current_position})", flush=True)
             block_num += 1
         # ================================ RECORD FIRST BYTES ================================
         if first_bytes_activated:
             global executed_bytes_list, real_ep
             if len(executed_bytes_list) < 64:
                 section_name = pe_infos.get_section_from_addr(pc)
-                print(section_name)
                 if section_name:
                     if real_ep == -1:
                         real_ep = pc
@@ -198,7 +206,8 @@ def on_all_sys_enter2(env, pc, call, rp):
     # ===================================== DLL CHECK =====================================
     # ==================================== PERMS CHECK ====================================
     if dll_activated or section_activated:
-        if panda.current_asid(env) in sample_asid:
+        current_process = panda.plugins['osi'].get_current_process(env)
+        if current_process.pid in sample_pid:
             if call != panda.ffi.NULL:
                 syscall_name = panda.ffi.string(call.name).decode()
                 for arg_idx in range(call.nargs):
@@ -234,27 +243,24 @@ def on_all_sys_enter2(env, pc, call, rp):
 
 @panda.cb_asid_changed()
 def asid_changed(env, old_asid, new_asid):
-    global sample_pid, sample_asid
+    global sample_pid, cmd_pid
     for process in panda.get_processes(env):
         process_name = ffi.string(process.name).decode()
-        if len(sample_pid) == 0 and "cmd" in process_name:
+        if cmd_pid is None and "cmd" in process_name:
             print(f"INITIAL CMD FOUND: {process_name} ({process.pid} - {process.ppid})", flush=True)
-            sample_pid.add(process.pid)
+            cmd_pid = process.pid
         elif "sample" in process_name:
-            if process.ppid in sample_pid:
+            if process.ppid in sample_pid or process.ppid == cmd_pid:
                 if process.pid not in sample_pid:
                     sample_pid.add(process.pid)
-                if new_asid not in sample_asid:
-                    print(f"SAMPLE FOUND: {process_name} ({process.pid} - {process.ppid} | {new_asid})", flush=True)
-                    sample_asid.add(new_asid)
-                    if not panda.is_callback_enabled("virt_mem_after_write") and (
-                            memcheck_activated or section_activated):
-                        panda.enable_memcb()
-                        panda.enable_callback("virt_mem_after_write")
-                        if section_activated:
-                            panda.enable_callback("virt_mem_after_read")
-                    if not panda.is_callback_enabled("before_block_exec"):
-                        panda.enable_callback("before_block_exec")
+                    print(f"SAMPLE FOUND: {process_name} ({process.pid} - {process.ppid})", flush=True)
+                if not panda.is_callback_enabled("virt_mem_after_write") and (memcheck_activated or section_activated):
+                    panda.enable_memcb()
+                    panda.enable_callback("virt_mem_after_write")
+                    if section_activated:
+                        panda.enable_callback("virt_mem_after_read")
+                if not panda.is_callback_enabled("before_block_exec"):
+                    panda.enable_callback("before_block_exec")
     return 0
 
 def is_known_dll_addr(addr):
@@ -268,12 +274,12 @@ if __name__ == "__main__":
         entropy_analysis = EntropyAnalysis(panda, pe_infos)
         dynamic_dll = DynamicLoadedDLL(panda, pe_infos)
         discovered_dll = SearchDLL(panda)
-        if dll_discover_activated:
-            discovered_dll.get_discovered_dlls()
         result = {"memory_write_exe_list": "", "entropy": "", "entropy_initial_oep": "", "entropy_unpacked_oep": "",
                   "dll_inital_iat": "","function_inital_iat": "", "dll_dynamically_loaded_dll": "", "dll_call_nbrs": "",
                   "dll_GetProcAddress_returns": "", "section_perms_changed": "", "executed_bytes_list": "","real_EP":"", "initial_EP":""}
         try:
+            if dll_discover_activated:
+                discovered_dll.get_discovered_dlls()
             if entropy_activated or memcheck_activated or dll_activated or section_activated or first_bytes_activated:
                 panda.run_replay("/replay/sample")
                 result["memory_write_exe_list"] = memory_write_exe_list

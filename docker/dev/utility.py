@@ -30,6 +30,7 @@ class PEInformations:
             self.optional_header_size = self.pe.OPTIONAL_HEADER.SectionAlignment
             entry_point = self.pe.OPTIONAL_HEADER.AddressOfEntryPoint
             headers = (self.pe.OPTIONAL_HEADER.ImageBase, self.pe.OPTIONAL_HEADER.ImageBase + self.pe.OPTIONAL_HEADER.SizeOfHeaders)
+            sections_data = b''
             for section in self.pe.sections:
                 start = headers[0] + section.VirtualAddress
                 end = start + section.Misc_VirtualSize
@@ -45,7 +46,9 @@ class PEInformations:
                 if section.contains_rva(entry_point):
                     self.initial_EP_section[0] = name
                     self.initial_EP = headers[0] + entry_point
-                callback_entropy(name, section)
+                callback_entropy(name, section.get_data())
+                sections_data += section.get_data()
+            callback_entropy("TOTAL", sections_data)
             if self.pe.OPTIONAL_HEADER.DATA_DIRECTORY[pefile.DIRECTORY_ENTRY['IMAGE_DIRECTORY_ENTRY_IMPORT']].VirtualAddress != 0:
                 self.pe.parse_data_directories(directories=[pefile.DIRECTORY_ENTRY['IMAGE_DIRECTORY_ENTRY_IMPORT']])
                 if hasattr(self.pe, 'DIRECTORY_ENTRY_IMPORT'):
@@ -53,11 +56,9 @@ class PEInformations:
                         #print(entry.dll)
                         print(entry.dll, entry.struct.FirstThunk + headers[0], entry.__dict__, flush=True)
                         for imp in entry.imports:
-                            #self.imports[imp.name] = int(imp.address, base=16) + 0x200
                             if imp.name is not None:
                                 self.imports[imp.name.decode()] = imp.address
                             print("\t", imp.name, imp.address, hex(imp.address), flush=True)
-                            #print(hex(imp.address), imp.name, hex(imp.struct_table.Function), imp.__dict__, flush=True)
                             callback_iat(entry.dll.decode())
                 else:  # IAT is stripped
                     pass  # TODO: IMPLEMENT
@@ -120,8 +121,8 @@ class EntropyAnalysis:
         self.pe_info = pe_info
         self.entropy = {}  # {511312271: {"UPX0": 0.7751087, "TOTAL: 0.7751087}, ...}
 
-    def initial_entropy(self, name, section):
-        self._compute_entropy(0, name, section.get_data())
+    def initial_entropy(self, section_name, section_data):
+        self._compute_entropy(0, section_name, section_data)
 
     def read_memory(self, cpu):
         m = {}
@@ -216,10 +217,13 @@ class DLLCallAnalysis:
                                      "getcommandline", "virtualprotect", "getstartupinfo", "getstdhandle", "regopenkeyex"]
 
     def __get_list_for_function(self, name):
-        if name.lower() in self.__MALICIOUS_FUNCTIONS:
+        if self.is_function_malicious(name):
             return self.functions_malicious
         else:
             return self.functions_generic
+
+    def is_function_malicious(self, name):
+        return name.lower() in self.__MALICIOUS_FUNCTIONS
 
     def increase_call_nbr(self, source, name):
         list_to_use = self.__get_list_for_function(name)
