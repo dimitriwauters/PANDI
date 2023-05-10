@@ -126,6 +126,7 @@ class EntropyAnalysis:
 
     def read_memory(self, cpu):
         m = {}
+        modified = False
         for header_name in self.pe_info.headers:
             m[header_name] = b""
             mapping = self.pe_info.headers[header_name]
@@ -134,6 +135,7 @@ class EntropyAnalysis:
             while size > 0:
                 try:
                     m[header_name] += self.panda.virtual_memory_read(cpu, mapping[0], size)
+                    modified = True
                     print(f"(READ_PROCESS_MEMORY) Successfully read memory of size {size} (initial mapping size: "
                           f"{mapping_size}) with base addr {hex(mapping[0])} (section name: {header_name})", flush=True)
                     break
@@ -152,7 +154,7 @@ class EntropyAnalysis:
                         self.pe_info.imports[import_name] = to_hex
                 except ValueError:
                     pass
-        return m
+        return m, modified
 
     def analyse_entropy(self, cpu, m):
         whole_m = b""
