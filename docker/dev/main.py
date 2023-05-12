@@ -76,7 +76,7 @@ if __name__ == "__main__":
                 except subprocess.CalledProcessError as e:
                     print_info("    !! An error occurred when trying to analyse PANDA output:")
                     print_info(e.stderr.decode())
-                    sys.exit(e.returncode)
+                    print(e)
 
                 if is_debug:
                     write_debug_file(malware_sample, "run_panda", panda_run_output.stdout.decode())

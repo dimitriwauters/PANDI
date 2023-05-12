@@ -95,11 +95,9 @@ def before_block_exec(env, tb):
             if sample_base:
                 pe_infos.init_headers(sample_base, entropy_analysis.initial_entropy, dynamic_dll.initial_iat)
                 section_perms_check = SectionPermissionCheck(pe_infos.headers_perms)
-        for header_name in pe_infos.headers:
-            header = pe_infos.headers[header_name]
-            if header[0] <= pc <= header[1]:
-                current_section = header_name
-                break
+        else:
+            pe_infos.update_imports_addr(env)
+        current_section = pe_infos.get_section_from_addr(pc)
         # Update entry point of unpacked code
         if pe_infos.unpacked_EP_section[1] == 0 and current_section is not None \
                 and last_section_executed == pe_infos.initial_EP_section[0] \
@@ -256,7 +254,7 @@ def asid_changed(env, old_asid, new_asid):
         if "cmd" in process_name and current_process.pid not in sample_pid:
             print(f"INITIAL CMD FOUND: {process_name} ({current_process.pid} - {current_process.ppid})", flush=True)
             sample_pid.add(current_process.pid)
-        elif current_process.ppid in sample_pid and current_process.pid :
+        elif current_process.ppid in sample_pid and current_process.pid not in sample_pid:
             sample_pid.add(current_process.pid)
             sample_asid.add(new_asid)
             print(f"SAMPLE FOUND: {process_name} ({current_process.pid} - {current_process.ppid}) ({old_asid} {new_asid} | {sample_asid})", flush=True)

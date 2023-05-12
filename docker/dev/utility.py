@@ -49,7 +49,6 @@ class PEInformations:
                 callback_entropy(name, section.get_data())
                 sections_data += section.get_data()
             callback_entropy("TOTAL", sections_data)
-            print(self.headers)
             if self.pe.OPTIONAL_HEADER.DATA_DIRECTORY[pefile.DIRECTORY_ENTRY['IMAGE_DIRECTORY_ENTRY_IMPORT']].VirtualAddress != 0:
                 self.pe.parse_data_directories(directories=[pefile.DIRECTORY_ENTRY['IMAGE_DIRECTORY_ENTRY_IMPORT']])
                 if hasattr(self.pe, 'DIRECTORY_ENTRY_IMPORT'):
@@ -68,6 +67,20 @@ class PEInformations:
         except ValueError as e:
             print(e)
 
+    def update_imports_addr(self, cpu):
+        for import_name in self.imports:
+            #print(hex(self.imports[import_name]), hex(self.get_higher_section_addr()))
+            if self.imports[import_name] < self.get_higher_section_addr():
+                try:
+                    a = self.panda.virtual_memory_read(cpu, self.imports[import_name], 4)
+                    to_hex = int(a[::-1].hex(), base=16)
+                    if to_hex > self.imports[import_name]:
+                        print("CHANGED IMPORT", import_name, hex(self.imports[import_name]), hex(to_hex))
+                        self.imports[import_name] = to_hex
+                except ValueError:
+                    pass
+
+
     def get_section_from_addr(self, addr):
         if self.image_base <= addr <= self.image_base + self.optional_header_size:
             return "OPTIONAL_HEADER"
@@ -83,9 +96,9 @@ class PEInformations:
             return None
 
     def get_higher_section_addr(self):
-        if self.higher_section_addr is None:
+        if self.higher_section_addr is None or self.higher_section_addr == 0:
             self.higher_section_addr = 0
-            for header_name in self.headers:
+            for header_name in self.headers.keys():
                 section = self.headers[header_name]
                 if int(section[1]) > self.higher_section_addr:
                     self.higher_section_addr = int(section[1])
@@ -146,15 +159,6 @@ class EntropyAnalysis:
                 if not os.path.isfile("/addon/test.exe"):
                     with open("/addon/test.exe", 'wb') as file:
                         file.write(m[header_name])"""
-        for import_name in self.pe_info.imports:
-            if self.pe_info.imports[import_name] < self.pe_info.get_higher_section_addr():
-                try:
-                    a = self.panda.virtual_memory_read(cpu, self.pe_info.imports[import_name], 4)
-                    to_hex = int(a[::-1].hex(), base=16)
-                    if to_hex > self.pe_info.imports[import_name]:
-                        self.pe_info.imports[import_name] = to_hex
-                except ValueError:
-                    pass
         return m, modified
 
     def analyse_entropy(self, cpu, m):
