@@ -22,14 +22,14 @@ class PEInformations:
         self.unpacked_EP_section = ['', 0]
         self.pe = None
 
-    def init_headers(self, callback_entropy, callback_iat):
+    def init_headers(self, sample_base, callback_entropy, callback_iat):
         # Flags: IMAGE_SCN_CNT_UNINITIALIZED_DATA, IMAGE_SCN_MEM_EXECUTE, IMAGE_SCN_MEM_READ, IMAGE_SCN_MEM_WRITE
         try:
             self.pe = pefile.PE(f"{self.process_path}/{self.process_name}")
-            self.image_base = self.pe.OPTIONAL_HEADER.ImageBase
+            self.image_base = sample_base
             self.optional_header_size = self.pe.OPTIONAL_HEADER.SectionAlignment
             entry_point = self.pe.OPTIONAL_HEADER.AddressOfEntryPoint
-            headers = (self.pe.OPTIONAL_HEADER.ImageBase, self.pe.OPTIONAL_HEADER.ImageBase + self.pe.OPTIONAL_HEADER.SizeOfHeaders)
+            headers = (self.image_base, self.image_base + self.pe.OPTIONAL_HEADER.SizeOfHeaders)
             sections_data = b''
             for section in self.pe.sections:
                 start = headers[0] + section.VirtualAddress
@@ -49,6 +49,7 @@ class PEInformations:
                 callback_entropy(name, section.get_data())
                 sections_data += section.get_data()
             callback_entropy("TOTAL", sections_data)
+            print(self.headers)
             if self.pe.OPTIONAL_HEADER.DATA_DIRECTORY[pefile.DIRECTORY_ENTRY['IMAGE_DIRECTORY_ENTRY_IMPORT']].VirtualAddress != 0:
                 self.pe.parse_data_directories(directories=[pefile.DIRECTORY_ENTRY['IMAGE_DIRECTORY_ENTRY_IMPORT']])
                 if hasattr(self.pe, 'DIRECTORY_ENTRY_IMPORT'):

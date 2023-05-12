@@ -12,7 +12,7 @@ panda.load_plugin("syscalls2", {"load-info": True})
 
 malware_sample_path = ""
 malware_sample = ""
-sample_asid = None
+sample_asid = set()
 sample_pid = set()
 cmd_pid = None
 memory_write_exe_list = {}
@@ -81,14 +81,20 @@ def virt_mem_after_read(env, pc, addr, size, buf):
 @panda.cb_before_block_exec(enabled=False)
 def before_block_exec(env, tb):
     global entropy_activated, memcheck_activated, dll_activated, last_section_executed, section_perms_check, first_bytes_activated
-    #current_process = panda.plugins['osi'].get_current_process(env)
-    if not panda.in_kernel(env) and panda.current_asid(env) == sample_asid:
+    if not panda.in_kernel(env) and panda.current_asid(env) in sample_asid:
         current_position = "Unknown"
         current_section = None
         pc = panda.arch.get_pc(env)
         if not pe_infos.headers:
-            pe_infos.init_headers(entropy_analysis.initial_entropy, dynamic_dll.initial_iat)
-            section_perms_check = SectionPermissionCheck(pe_infos.headers_perms)
+            sample_base = None
+            for mapping in panda.get_mappings(env):
+                if mapping.file != panda.ffi.NULL:
+                    mapping_name = panda.ffi.string(mapping.file).decode()
+                    if "sample.exe" in mapping_name:
+                        sample_base = mapping.base
+            if sample_base:
+                pe_infos.init_headers(sample_base, entropy_analysis.initial_entropy, dynamic_dll.initial_iat)
+                section_perms_check = SectionPermissionCheck(pe_infos.headers_perms)
         for header_name in pe_infos.headers:
             header = pe_infos.headers[header_name]
             if header[0] <= pc <= header[1]:
@@ -162,7 +168,7 @@ def before_block_exec(env, tb):
                         current_position = f"SECTION({current_section})"
 
                     if is_debug:
-                        print(f"(BLOCK_EXEC) MEASURED ENTROPY AT PC {hex(pc)} (Detected position: {current_position})", flush=True)
+                        print(f"(BLOCK_EXEC) MEASURED ENTROPY AT PC {hex(pc)} (Detected position: {current_position}, {panda.current_asid(env)})", flush=True)
             block_num += 1
         # ================================ RECORD FIRST BYTES ================================
         if first_bytes_activated:
@@ -178,7 +184,7 @@ def before_block_exec(env, tb):
                         executed_bytes_list.append(bytes[i])
             else:
                 if is_debug:
-                    print(f"(BLOCK_EXEC) DETECTED FIRST BYTES: {executed_bytes_list}", flush=True)
+                    print(f"(BLOCK_EXEC) DETECTED FIRST BYTES: {[str(hex(elem))[2:] for elem in executed_bytes_list]}", flush=True)
                 first_bytes_activated = False
     # =============================== EXEC WRITE DETECTION ===============================
     if memcheck_activated:
@@ -244,24 +250,23 @@ def on_all_sys_enter2(env, pc, call, rp):
 @panda.cb_asid_changed()
 def asid_changed(env, old_asid, new_asid):
     global sample_pid, sample_asid
-    current_process = panda.plugins['osi'].get_current_process(env)
-    process_name = ffi.string(current_process.name).decode()
-    if "cmd" in process_name and current_process.pid not in sample_pid:
-        print(f"INITIAL CMD FOUND: {process_name} ({current_process.pid} - {current_process.ppid})", flush=True)
-        sample_pid.add(current_process.pid)
-    elif "sample" in process_name:
-        if sample_asid is None:
-            sample_asid = new_asid
-        elif old_asid == sample_asid:
-            sample_asid = None
-        print(f"SAMPLE FOUND: {process_name} ({current_process.pid} - {current_process.ppid}) ({old_asid} {new_asid} | {sample_asid})", flush=True)
-        if not panda.is_callback_enabled("virt_mem_after_write"):
-            if memcheck_activated or section_activated:
-                panda.enable_memcb()
-                panda.enable_callback("virt_mem_after_write")
-                if section_activated:
-                    panda.enable_callback("virt_mem_after_read")
-            panda.enable_callback("before_block_exec")
+    if len(sample_asid) == 0 or (old_asid in sample_asid or new_asid in sample_asid):
+        current_process = panda.plugins['osi'].get_current_process(env)
+        process_name = ffi.string(current_process.name).decode()
+        if "cmd" in process_name and current_process.pid not in sample_pid:
+            print(f"INITIAL CMD FOUND: {process_name} ({current_process.pid} - {current_process.ppid})", flush=True)
+            sample_pid.add(current_process.pid)
+        elif current_process.ppid in sample_pid and current_process.pid :
+            sample_pid.add(current_process.pid)
+            sample_asid.add(new_asid)
+            print(f"SAMPLE FOUND: {process_name} ({current_process.pid} - {current_process.ppid}) ({old_asid} {new_asid} | {sample_asid})", flush=True)
+            if not panda.is_callback_enabled("before_block_exec"):
+                if memcheck_activated or section_activated:
+                    panda.enable_memcb()
+                    panda.enable_callback("virt_mem_after_write")
+                    if section_activated:
+                        panda.enable_callback("virt_mem_after_read")
+                panda.enable_callback("before_block_exec")
     return 0
 
 def is_known_dll_addr(addr):
