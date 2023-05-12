@@ -77,11 +77,13 @@ if __name__ == "__main__":
         f.write(",".join(features.keys()))
         f.write("\n")
     for sample in os.listdir(directory):
-         sample_dir = os.path.join(directory, sample)
+       sample_dir = os.path.join(directory, sample)
+       if os.path.isdir(sample_dir):
          features = create_features()
          features["name"] = sample
          for analysis in os.listdir(sample_dir):
-             analysis_dir = os.path.join(sample_dir, analysis)
+           analysis_dir = os.path.join(sample_dir, analysis)
+           if os.path.isdir(analysis_dir):
              for filename in os.listdir(analysis_dir):
                  path = os.path.join(analysis_dir, filename)
                  result = read_file(path)
@@ -166,5 +168,3 @@ if __name__ == "__main__":
          with open("features.csv", "a") as f:
              f.write(",".join(str(x) for x in features.values()))
              f.write("\n")
-                         
-                     
