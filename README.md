@@ -140,16 +140,6 @@ an analysis every 1000 basic block.
 before shutting down the discovery of DLL functions. Not every function of the DLL are mapped in-memory when loading the DLL
 meaning that some will throw an error when trying to get information about them, this is the type of failure we see here.
 The default value is fixed at 10 000 errors.
-- `--discovered_dll_granularity=1000` (or `panda_discovered_dll_granularity=1000`) define the granularity to adopt between 
-two discoveries of discovered DLL during the execution of the sample. To reduce the time needed to complete the analysis
-not all discovered dll are logged. This granularity can be changed with this parameter, its default value is set to 1000.
-If you want to log every call to a discovered DLL, you can set this value to 0.   
-Some discovered DLL will always be logged, the ones we consider are potentially malicious, like:
-  - GetProcAddress
-  - LoadLibrary
-  - ExitProcess
-  - GetModuleHandle
-  - ...
 - `--force_dll_rediscover=False` (or `panda_force_dll_rediscover=False`) force the re-discovery of DLL functions even if
 it was already done in the past, like explained above.
 

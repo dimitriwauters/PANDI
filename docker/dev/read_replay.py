@@ -5,6 +5,7 @@ from syscalls import SysCallsInterpreter
 import os
 import sys
 import pickle
+import hashlib
 
 ffi = cffi.FFI()
 panda = Panda(qcow='/root/.panda/vm.qcow2', mem="3G", os_version="windows-32-7sp0", extra_args="-nographic -loadvm 1")
@@ -31,7 +32,6 @@ dll_activated = os.getenv("panda_dll", default=False) == "True"
 dll_discover_activated = os.getenv("panda_dll_discover", default=False) == "True"
 section_activated = os.getenv("panda_section_perms", default=False) == "True"
 first_bytes_activated = os.getenv("panda_first_bytes", default=False) == "True"
-discovered_dll_granularity = int(os.getenv("panda_discovered_dll_granularity", default=1000))
 
 block_num = entropy_granularity
 entropy_analysis = None
@@ -43,7 +43,6 @@ dll_analysis = DLLCallAnalysis()
 dynamic_dll = None
 pe_infos = None
 discovered_dll = None
-discovered_dll_counter = discovered_dll_granularity
 
 
 @panda.cb_virt_mem_after_write(enabled=False)
@@ -118,7 +117,6 @@ def before_block_exec(env, tb):
                     section_perms_check.add_section_permission(env.rr_guest_instr_count, section_name, "execute", True)
         # ===================================== DLL CHECK =====================================
         if dll_activated and pe_infos.headers:
-            global discovered_dll_counter
             if is_known_dll_addr(pc):
                 function_name = ""
                 if pc in pe_infos.imports.values():  # If current addr correspond to a DLL method call addr
@@ -131,12 +129,6 @@ def before_block_exec(env, tb):
                     dll_analysis.increase_call_nbr("dynamic", function_name)
                 elif pc in discovered_dll.dll.keys():
                     function_name = discovered_dll.get_dll_method_name_from_addr(pc)
-                    """if dll_analysis.is_function_malicious(function_name) or discovered_dll_counter >= discovered_dll_granularity:
-                        current_position = f"DISCOVERED_DLL({function_name})"
-                        function_name = function_name.split('-')[0]
-                        dll_analysis.increase_call_nbr("discovered", function_name)
-                        discovered_dll_counter = 0
-                    discovered_dll_counter += 1"""
                     current_position = f"DISCOVERED_DLL({function_name})"
                     function_name = function_name.split('-')[0]
                     dll_analysis.increase_call_nbr("discovered", function_name)
@@ -149,7 +141,6 @@ def before_block_exec(env, tb):
                     elif "LoadLibrary" in function_name:
                         dynamic_dll.add_dll(syscall_result["name"])
 
-                #if is_debug and current_position is not "Unknown":
                 if is_debug and ("DISCOVERED_DLL" not in current_position or dll_analysis.is_function_malicious(function_name)):
                     print(f"(BLOCK_EXEC) DETECTED DLL AT PC {hex(pc)} (Detected position: {current_position})", flush=True)
         # =================================== ENTROPY CHECK ===================================
@@ -274,7 +265,8 @@ if __name__ == "__main__":
     if len(sys.argv) > 2:
         malware_sample_path = sys.argv[1]
         malware_sample = sys.argv[2]
-        pe_infos = PEInformations(panda, malware_sample_path, malware_sample)
+        malware_hash = hashlib.sha256(malware_sample.encode()).hexdigest()
+        pe_infos = PEInformations(panda, is_debug, malware_sample_path, malware_sample)
         entropy_analysis = EntropyAnalysis(panda, pe_infos)
         dynamic_dll = DynamicLoadedDLL(panda, pe_infos)
         discovered_dll = SearchDLL(panda)
@@ -285,7 +277,7 @@ if __name__ == "__main__":
             if dll_discover_activated:
                 discovered_dll.get_discovered_dlls()
             if entropy_activated or memcheck_activated or dll_activated or section_activated or first_bytes_activated:
-                panda.run_replay("/replay/sample")
+                panda.run_replay(f"/replay/{malware_hash}")
                 result["memory_write_exe_list"] = memory_write_exe_list
                 result["entropy"] = entropy_analysis.entropy
                 result["entropy_initial_oep"] = pe_infos.initial_EP_section
@@ -300,7 +292,7 @@ if __name__ == "__main__":
                 result["executed_bytes_list"] = executed_bytes_list
                 result["initial_EP"] = pe_infos.initial_EP
                 result["real_EP"] = real_ep
-                with open("replay_result.pickle", "wb") as f:
+                with open(f"{malware_hash}_result.pickle", "wb") as f:
                     pickle.dump(result, f, protocol=pickle.HIGHEST_PROTOCOL)
         except Exception as e:
             print(e)

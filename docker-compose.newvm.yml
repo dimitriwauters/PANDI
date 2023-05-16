@@ -7,9 +7,9 @@ services:
     ports:
       - "4443:5900"
     volumes:
-      - "./docker/dev:/addon"
+      - "./docker/dev:/addon:ro"
       - "./docker/.panda:/root/.panda"
-      - "./new-vm:/root/new-vm"
+      - "./new-vm:/root/new-vm:ro"
     environment:
       - panda_debug=True
     command: python3 /addon/create_vm.py

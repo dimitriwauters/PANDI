@@ -1,13 +1,16 @@
 import os
 import subprocess
-import json
 import sys
 import time
 import pickle
 import shutil
 import re
+import hashlib
+from queue import Queue
+from threading import Thread, Lock
 from utility import write_debug_file, write_output_file
 
+NUMBER_OF_PARALLEL_EXECUTION = int(os.getenv("panda_max_parallel_execution", default=4))
 MAX_TRIES = 3
 
 entropy_activated = os.getenv("panda_entropy", default=False) == "True"
@@ -17,9 +20,159 @@ dll_discover_activated = os.getenv("panda_dll_discover", default=False) == "True
 sections_activated = os.getenv("panda_section_perms", default=False) == "True"
 first_bytes_activated = os.getenv("panda_first_bytes", default=False) == "True"
 
+thread_lock = Lock()
+
+class ProcessSample:
+    def __init__(self, sample_path):
+        self.malware_sample_path = os.path.dirname(sample_path)
+        self.malware_sample = os.path.basename(sample_path)
+        self.malware_hash = hashlib.sha256(self.malware_sample.encode()).hexdigest()
+        self.start_time = None
+        self.end_time = None
+        self.time_took = None
+        self.need_ml = False
+        self.is_packed = False
+
+    def launch(self):
+        for i in range(MAX_TRIES):
+            has_failed = False
+            with thread_lock:  # Blocking state when running VM, only one VM can run at anytime
+                print_info(f"  -- Starting processing file '{self.malware_sample_path}/{self.malware_sample}'")
+                subprocess.run(["genisoimage", "-max-iso9660-filenames", "-RJ", "-o", "/payload.iso"] + [f"{self.malware_sample_path}/{self.malware_sample}", "/dll"], capture_output=True)
+                has_failed &= self.__run_subprocess("run_panda", [self.malware_sample])
+            time.sleep(2)
+            if dll_discover_activated:
+                has_failed &= self.__run_subprocess("discover_dlls")
+            time.sleep(2)
+            self.start_time = time.time()
+            has_failed &= self.__run_subprocess("read_replay", [self.malware_sample_path, self.malware_sample])
+            self.end_time = time.time()
+            self.time_took = self.end_time - self.start_time
+            if not has_failed:
+                break
+            print_info(f"  !! An error occured when processing file '{self.malware_sample_path}/{self.malware_sample}': try {i+1} of {MAX_TRIES}")
+
+    def __run_subprocess(self, filename, parameters=[]):
+        try:
+            output = subprocess.run(["python3", f"/addon/{filename}.py"] + parameters, capture_output=True)
+            if is_debug:
+                write_debug_file(self.malware_sample, filename, output.stdout.decode())
+            return False
+        except subprocess.CalledProcessError:
+            return True
+
+    def get_result(self):
+        panda_output_dict = None
+        if os.path.isfile(f"{self.malware_hash}_result.pickle"):
+            with open(f"{self.malware_hash}_result.pickle", "rb") as f:
+                panda_output_dict = pickle.load(f)
+        if panda_output_dict:
+            if memcheck_activated:
+                self.memcheck(panda_output_dict)
+            if entropy_activated:
+                self.entropy(panda_output_dict)
+                self.need_ml = True
+            if dll_activated:
+                self.dll(panda_output_dict)
+                self.need_ml = True
+            if sections_activated:
+                self.sections(panda_output_dict)
+                self.need_ml = True
+            if first_bytes_activated:
+                self.first_bytes(panda_output_dict)
+                self.need_ml = True
+            if self.need_ml:
+                self.execute_machine_learning()
+        print_info(f"  ** The result of the analysis of {self.malware_sample} is: {'PACKED' if self.is_packed else 'NOT-PACKED'} (Took {self.time_took} seconds to analyse)")
+        write_output_file(self.malware_sample, "time", "time", {"start": self.start_time, "end": self.end_time})
+        write_output_file(self.malware_sample, "", "result", {"is_packed": self.is_packed})
+        return self.is_packed
+
+    def clean(self):
+        try:
+            shutil.move(f"/replay/{self.malware_hash}_screenshot", f"/output/{re.split('.exe', self.malware_sample, flags=re.IGNORECASE)[0]}/screenshot")
+            os.remove(f"/replay/{self.malware_hash}-rr-nondet.log")
+            os.remove(f"/replay/{self.malware_hash}-rr-snp")
+            os.remove(f"{self.malware_hash}_result.pickle")
+        except FileNotFoundError:
+            pass
+
+    # ==================================================================================================================
+
+    def memcheck(self, panda_output_dict):
+        memory_write_list = panda_output_dict["memory_write_exe_list"]
+        if len(memory_write_list) > 0:
+            # TODO: Check if consecutive
+            """count = 0
+            for elem in memory_write_list:
+                addr = elem[1] % 134  # Modulo x86, the length of an instruction
+                print(addr)"""
+            self.is_packed = True
+        write_output_file(self.malware_sample, "memcheck", "memcheck", {"memory_write_exe_list": memory_write_list})
+
+    def entropy(self, panda_output_dict):
+        entropy = panda_output_dict["entropy"]
+        entropy_initial_oep = panda_output_dict["entropy_initial_oep"]
+        entropy_unpacked_oep = panda_output_dict["entropy_unpacked_oep"]
+        entropy_val = {}
+        for instr_nbr in entropy:
+            current_dict = entropy[instr_nbr]
+            for header_name in current_dict:
+                if header_name not in entropy_val:
+                    entropy_val[header_name] = ([], [])
+                entropy_val[header_name][0].append(int(instr_nbr))
+                entropy_val[header_name][1].append(current_dict[header_name])
+        for header_name in entropy_val:
+            has_initial_eop, has_unpacked_eop = False, False
+            if header_name == entropy_initial_oep[0]:
+                has_initial_eop = True
+            if header_name == entropy_unpacked_oep[0]:
+                has_unpacked_eop = True
+            file_dict = {"entropy": [entropy_val[header_name][0], entropy_val[header_name][1]],
+                         "has_inital_eop": has_initial_eop, "initial_eop": entropy_initial_oep[1],
+                         "has_unpacked_eop": has_unpacked_eop, "unpacked_eop": entropy_unpacked_oep[1]}
+            write_output_file(self.malware_sample, "entropy", header_name, file_dict)
+
+    def dll(self, panda_output_dict):
+        file_dict = {"initial_iat": panda_output_dict["dll_inital_iat"],
+                     "dynamically_loaded_dll": panda_output_dict["dll_dynamically_loaded_dll"],
+                     "call_nbrs_generic": panda_output_dict["dll_call_nbrs_generic"],
+                     "call_nbrs_malicious": panda_output_dict["dll_call_nbrs_malicious"],
+                     "GetProcAddress_functions": panda_output_dict["dll_GetProcAddress_returns"],
+                     "function_inital_iat": panda_output_dict["function_inital_iat"]}
+        write_output_file(self.malware_sample, "syscalls", "syscalls", file_dict)
+
+    def sections(self, panda_output_dict):
+        file_dict = {"section_perms_changed": panda_output_dict["section_perms_changed"]}
+        write_output_file(self.malware_sample, "sections_perms", "sections_perms", file_dict)
+
+    def first_bytes(self, panda_output_dict):
+        file_dict = {"executed_bytes_list": panda_output_dict["executed_bytes_list"],
+                     "initial_EP": panda_output_dict["initial_EP"], "real_EP": panda_output_dict["real_EP"]}
+        write_output_file(self.malware_sample, "first_bytes", "first_bytes", file_dict)
+
+    def execute_machine_learning(self):
+        # TODO: Implement
+        pass
+        """subprocess.run(["python3", "create_csv.py", self.malware_sample_path])
+        with open("features.csv", 'r') as f:
+            pass"""
+
 def print_info(text):
     if not is_silent:
         print(text, flush=True)
+
+def process_sample(q):
+    while True:
+        sample_path = q.get()
+        if sample_path is None:
+            break
+        process = ProcessSample(sample_path)
+        process.launch()
+        is_packed = process.get_result()
+        result[is_packed].append(process.malware_sample)
+        process.clean()
+        q.task_done()
 
 
 if __name__ == "__main__":
@@ -37,120 +190,27 @@ if __name__ == "__main__":
     print_info("++ Launching")
     result = {True: [], False: []}
     if force_executable is None:
-        files_to_analyse = [os.path.join(root, name) for root, dirs, files in os.walk("/payload") for name in files if name.lower().endswith(".exe")]
+        already_analysed = [name for name in os.listdir("/output")]
+        files_to_analyse = [os.path.join(root, name) for root, dirs, files in os.walk("/payload") for name in files if name.lower().endswith(".exe") and name.split('.')[0] not in already_analysed]
     else:
         files_to_analyse = [force_executable]
+    q = Queue(len(files_to_analyse))
+    NUMBER_OF_PARALLEL_EXECUTION = min(len(files_to_analyse), NUMBER_OF_PARALLEL_EXECUTION)
+    for i in range(NUMBER_OF_PARALLEL_EXECUTION):
+        worker = Thread(target=process_sample, args=(q,))
+        worker.start()
     for sample_path in files_to_analyse:
-        malware_sample_path = os.path.dirname(sample_path)
-        malware_sample = os.path.basename(sample_path)
-        if ".exe" in malware_sample.lower():
-            is_packed = False
-            panda_output_dict = None
-            print_info(f"  -- Processing file '{malware_sample_path}/{malware_sample}'")
-            for i in range(MAX_TRIES):
-                panda_run_output, panda_dll_output, panda_replay_output = None, None, None
-                print_info("    -- Creating ISO")
-                paths = [f"{malware_sample_path}/{malware_sample}", "/dll"]
-                subprocess.run(["genisoimage", "-max-iso9660-filenames", "-RJ", "-o", "/payload.iso"] + paths, capture_output=True)
-                print_info("    -- Running PANDA")
-                try:
-                    panda_run_output = subprocess.run(["python3", "/addon/run_panda.py", malware_sample], capture_output=True)
-                except subprocess.CalledProcessError as e:
-                    print_info("    !! An error occurred when trying to execute PANDA:")
-                    print_info(e.stderr.decode())
-                    sys.exit(e.returncode)
-                time.sleep(2)
-                if dll_discover_activated:
-                    print_info("    -- Discovering DLLs")
-                    try:
-                        panda_dll_output = subprocess.run(["python3", "/addon/discover_dlls.py"], capture_output=True)
-                    except subprocess.CalledProcessError as e:
-                        print_info("    !! An error occurred when trying to discover DLLs:")
-                        print_info(e.stderr.decode())
-                        sys.exit(e.returncode)
-                time.sleep(2)
-                start_time = time.time()
-                print_info("    -- Analysing PANDA recording (might take a while)")
-                try:
-                    panda_replay_output = subprocess.run(["python3", "/addon/read_replay.py", malware_sample_path, malware_sample], capture_output=True)
-                except subprocess.CalledProcessError as e:
-                    print_info("    !! An error occurred when trying to analyse PANDA output:")
-                    print_info(e.stderr.decode())
-                    print(e)
-
-                if is_debug:
-                    write_debug_file(malware_sample, "run_panda", panda_run_output.stdout.decode())
-                    write_debug_file(malware_sample, "read_replay", panda_replay_output.stdout.decode())
-                    if panda_dll_output:
-                        write_debug_file(malware_sample, "discover_dlls", panda_dll_output.stdout.decode())
-
-                if os.path.isfile("replay_result.pickle"):
-                    with open("replay_result.pickle", "rb") as f:
-                        panda_output_dict = pickle.load(f)
-                if panda_output_dict is not None:
-                    break
-
-                print_info(f"  !! An error occurred when recovering the recording of PANDA, retrying... ({i+1} of {MAX_TRIES})\n")
-
-            if panda_output_dict:
-                if memcheck_activated:
-                    memory_write_list = panda_output_dict["memory_write_exe_list"]
-                    if len(memory_write_list) > 0:
-                        # TODO: Check if consecutive
-                        """count = 0
-                        for elem in memory_write_list:
-                            addr = elem[1] % 134  # Modulo x86, the length of an instruction
-                            print(addr)"""
-                        is_packed = True
-                    write_output_file(malware_sample, "memcheck", "memcheck", {"memory_write_exe_list": memory_write_list, "result": is_packed})
-                    result[is_packed].append(malware_sample)
-                if entropy_activated:
-                    entropy = panda_output_dict["entropy"]
-                    entropy_initial_oep = panda_output_dict["entropy_initial_oep"]
-                    entropy_unpacked_oep = panda_output_dict["entropy_unpacked_oep"]
-                    entropy_val = {}
-                    for instr_nbr in entropy:
-                        current_dict = entropy[instr_nbr]
-                        for header_name in current_dict:
-                            if header_name not in entropy_val:
-                                entropy_val[header_name] = ([], [])
-                            entropy_val[header_name][0].append(int(instr_nbr))
-                            entropy_val[header_name][1].append(current_dict[header_name])
-                    for header_name in entropy_val:
-                        has_initial_eop, has_unpacked_eop = False, False
-                        if header_name == entropy_initial_oep[0]:
-                            has_initial_eop = True
-                        if header_name == entropy_unpacked_oep[0]:
-                            has_unpacked_eop = True
-                        file_dict = {"entropy": [entropy_val[header_name][0], entropy_val[header_name][1]],
-                                     "has_inital_eop": has_initial_eop, "initial_eop": entropy_initial_oep[1],
-                                     "has_unpacked_eop": has_unpacked_eop, "unpacked_eop": entropy_unpacked_oep[1]}
-                        write_output_file(malware_sample, "entropy", header_name, file_dict)
-                if dll_activated:
-                    file_dict = {"initial_iat": panda_output_dict["dll_inital_iat"], "dynamically_loaded_dll": panda_output_dict["dll_dynamically_loaded_dll"],
-                                 "call_nbrs_generic": panda_output_dict["dll_call_nbrs_generic"], "call_nbrs_malicious": panda_output_dict["dll_call_nbrs_malicious"],
-                                 "GetProcAddress_functions": panda_output_dict["dll_GetProcAddress_returns"],
-                                 "function_inital_iat": panda_output_dict["function_inital_iat"]}
-                    write_output_file(malware_sample, "syscalls", "syscalls", file_dict)
-                if sections_activated:
-                    file_dict = {"section_perms_changed": panda_output_dict["section_perms_changed"]}
-                    write_output_file(malware_sample, "sections_perms", "sections_perms", file_dict)
-                if first_bytes_activated:
-                    file_dict = {"executed_bytes_list": panda_output_dict["executed_bytes_list"],"initial_EP":panda_output_dict["initial_EP"],"real_EP":panda_output_dict["real_EP"]}
-                    write_output_file(malware_sample, "first_bytes", "first_bytes", file_dict)
-                result[is_packed].append(malware_sample)
-                end_time = time.time()
-                write_output_file(malware_sample, "time", "time", {"start": start_time, "end": end_time})
-                write_output_file(malware_sample, "", "result", {"is_packed": is_packed})
-                shutil.copy("/replay/sample_screen", f"/output/{re.split('.exe', malware_sample, flags=re.IGNORECASE)[0]}/screenshot")
-                print_info("      -- The result of the analysis is: {} (Took {} seconds to analyse)\n".format("PACKED" if is_packed else "NOT-PACKED", end_time - start_time))
+        q.put(sample_path)
+    q.join()
     print_info("++ Finished")
-
     # Show results
     total_analyzed = len(result[True])+len(result[False])
-    percent_packed = len(result[True])/total_analyzed
-    percent_not_packed = len(result[False])/total_analyzed
+    percent_packed, percent_not_packed = 0, 0
+    if total_analyzed > 0:
+        percent_packed = len(result[True])/total_analyzed
+        percent_not_packed = len(result[False])/total_analyzed
     print_info("*** % packed: {}\n*** % non-packed: {}".format(percent_packed, percent_not_packed))
     print_info("*** Packed list: {}".format(result[True]))
     print_info("*** Non-Packed list: {}".format(result[False]))
+    sys.exit(0)
 

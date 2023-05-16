@@ -7,10 +7,10 @@ services:
     ports:
       - "4443:5900"
     volumes:
-      - "./docker/dev:/addon"
-      - "./docker/.panda:/root/.panda"
+      - "./docker/dev:/addon:ro"
+      - "./docker/.panda:/root/.panda:ro"
       - "./payload:/payload"
-      - "./additional-dll:/dll/additional-dll"
+      - "./additional-dll:/dll/additional-dll:ro"
       - "./output:/output"
       - "./.debug:/debug"
       - "./replay:/replay"

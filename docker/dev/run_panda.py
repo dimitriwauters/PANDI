@@ -2,10 +2,12 @@ import string
 import time
 import sys
 import random
+import hashlib
 
 from pandare import Panda, panda_expect
 
 malware_sample = ""
+wait_duration = 60
 panda = Panda(qcow='/root/.panda/vm.qcow2', mem="3G", os_version="windows-32-7sp0", extra_args="-show-cursor -vnc 0.0.0.0:0,to=99,id=default -net nic -net user,restrict=on -loadvm 1")
 
 
@@ -59,7 +61,7 @@ def run_cmd():
     send_command(panda, "start /w /D \"C:\\Users\\IEUser\\Desktop\" sample.exe")
     #send_command(panda, "start /w /D \"C:\\Users\\IEUser\\Desktop\" sample.exe & shutdown /s /t 0 /f")
     panda.disable_tb_chaining()
-    panda.run_monitor_cmd('begin_record /replay/sample')
+    panda.run_monitor_cmd(f'begin_record /replay/{hashlib.sha256(malware_sample.encode()).hexdigest()}')
 
     # TODO: Use mouse movements to prevent SplashScreen blocking (ex: Demo version of Themida) ?
     """panda.run_monitor_cmd('mouse_move 100 -100')
@@ -70,12 +72,12 @@ def run_cmd():
             time.sleep(.075)
             panda.run_monitor_cmd('mouse_button 0')
         time.sleep(1)"""
-    time.sleep(60)  # 600 - TODO: Need to find way of detecting end of process or timeout (40 min)
+    time.sleep(wait_duration)  # 600 - TODO: Need to find way of detecting end of process or timeout (40 min)
 
     #time.sleep(1800)  # 1800 seconds = 30 minutes
     panda.run_monitor_cmd('end_record')
     time.sleep(5)
-    panda.run_monitor_cmd('screendump /replay/sample_screen')
+    panda.run_monitor_cmd(f'screendump /replay/{hashlib.sha256(malware_sample.encode()).hexdigest()}_screenshot')
     time.sleep(1)
     panda.end_analysis()
 
@@ -83,6 +85,8 @@ def run_cmd():
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         malware_sample = sys.argv[1]
+        if len(sys.argv) > 2:
+            wait_duration = sys.argv[2]
         panda.run()
         time.sleep(2)
 

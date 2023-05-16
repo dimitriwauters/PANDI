@@ -7,8 +7,9 @@ import string
 import re
 
 class PEInformations:
-    def __init__(self, panda, process_path, process_name):
+    def __init__(self, panda, debugging_activated, process_path, process_name):
         self.panda = panda
+        self.debugging_activated = debugging_activated
         self.process_path = process_path
         self.process_name = process_name
         self.image_base = 0x0
@@ -53,12 +54,13 @@ class PEInformations:
                 self.pe.parse_data_directories(directories=[pefile.DIRECTORY_ENTRY['IMAGE_DIRECTORY_ENTRY_IMPORT']])
                 if hasattr(self.pe, 'DIRECTORY_ENTRY_IMPORT'):
                     for entry in self.pe.DIRECTORY_ENTRY_IMPORT:
-                        #print(entry.dll)
-                        print(entry.dll, entry.struct.FirstThunk + headers[0], entry.__dict__, flush=True)
+                        if self.debugging_activated:
+                            print(entry.dll, entry.struct.FirstThunk + headers[0], entry.__dict__, flush=True)
                         for imp in entry.imports:
                             if imp.name is not None:
                                 self.imports[imp.name.decode()] = imp.address
-                            print("\t", imp.name, imp.address, hex(imp.address), flush=True)
+                            if self.debugging_activated:
+                                print("\t", imp.name, imp.address, hex(imp.address), flush=True)
                             callback_iat(entry.dll.decode())
                 else:  # IAT is stripped
                     pass  # TODO: IMPLEMENT
@@ -69,17 +71,16 @@ class PEInformations:
 
     def update_imports_addr(self, cpu):
         for import_name in self.imports:
-            #print(hex(self.imports[import_name]), hex(self.get_higher_section_addr()))
             if self.imports[import_name] < self.get_higher_section_addr():
                 try:
                     a = self.panda.virtual_memory_read(cpu, self.imports[import_name], 4)
                     to_hex = int(a[::-1].hex(), base=16)
                     if to_hex > self.imports[import_name]:
-                        print("CHANGED IMPORT", import_name, hex(self.imports[import_name]), hex(to_hex))
+                        if self.debugging_activated:
+                            print(f"(IAT_IMPORT) CHANGED IMPORT {import_name}: {hex(self.imports[import_name])} -> {hex(to_hex)}")
                         self.imports[import_name] = to_hex
                 except ValueError:
                     pass
-
 
     def get_section_from_addr(self, addr):
         if self.image_base <= addr <= self.image_base + self.optional_header_size:
@@ -150,15 +151,11 @@ class EntropyAnalysis:
                 try:
                     m[header_name] += self.panda.virtual_memory_read(cpu, mapping[0], size)
                     modified = True
-                    print(f"(READ_PROCESS_MEMORY) Successfully read memory of size {size} (initial mapping size: "
-                          f"{mapping_size}) with base addr {hex(mapping[0])} (section name: {header_name})", flush=True)
+                    if self.pe_info.debugging_activated:
+                        print(f"(READ_PROCESS_MEMORY) Successfully read memory of size {size} (initial mapping size: {mapping_size}) with base addr {hex(mapping[0])} (section name: {header_name})", flush=True)
                     break
                 except ValueError:
                     size -= 0x1000
-            """if header_name == self.pe_info.unpacked_EP_section[0] and size == mapping_size:
-                if not os.path.isfile("/addon/test.exe"):
-                    with open("/addon/test.exe", 'wb') as file:
-                        file.write(m[header_name])"""
         return m, modified
 
     def analyse_entropy(self, cpu, m):

@@ -7,6 +7,6 @@ services:
     volumes:
       - "/.debug:/debug"
       - "./payload:/payload"
-      - "./additional-dll:/additional-dll"
+      - "./additional-dll:/additional-dll:ro"
     environment:
       - panda_silent=False
