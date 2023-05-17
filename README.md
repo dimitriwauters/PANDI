@@ -198,7 +198,7 @@ For example with `qemu-utils` on Linux
 * Launch the virtual machine, open a prompt and make a snapshot of the machine (on the slot 1)
   * To perform that, a script has been made. It can be launched with `docker-compose -f docker-compose.newvm.yml run pandare`
   * You can add, prior launching the script, some file you will want to launch on the VM. Those files can be put a folder called `new-vm`
-  * Now connect to the VM with a VNC viewer (like Remmina) trough the IP of the docker container
+  * Now connect to the VM with a VNC viewer (like Remmina) through the IP of the docker container
   * Install the program you want and finish by opening a prompt
   * Once its done, type `finished` in the console (where you typed `docker-compose -f docker-compose.newvm.yml run pandare`)
   * The VM is now ready to be used !

@@ -56,10 +56,12 @@ def asid_changed(env, old_asid, new_asid):
     return 0
 
 if __name__ == "__main__":
-    discovered_dll = SearchDLL(panda)
-    if not discovered_dll.is_savefile_exist() or dll_force_rebuild:
-        try:
-            panda.run_replay("/replay/sample")
-            discovered_dll.save_discovered_dlls()
-        except Exception as e:
-            print(e)
+    if len(sys.argv) > 1:
+        malware_hash = sys.argv[1]
+        discovered_dll = SearchDLL(panda)
+        if not discovered_dll.is_savefile_exist() or dll_force_rebuild:
+            try:
+                panda.run_replay(f"/replay/{malware_hash}")
+                discovered_dll.save_discovered_dlls()
+            except Exception as e:
+                print(e)

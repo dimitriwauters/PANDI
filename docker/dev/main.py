@@ -19,17 +19,22 @@ dll_activated = os.getenv("panda_dll", default=False) == "True"
 dll_discover_activated = os.getenv("panda_dll_discover", default=False) == "True"
 sections_activated = os.getenv("panda_section_perms", default=False) == "True"
 first_bytes_activated = os.getenv("panda_first_bytes", default=False) == "True"
+is_silent = os.getenv("panda_silent", default=False) == "True"
+is_debug = os.getenv("panda_debug", default=False) == "True"
+force_executable = os.getenv("panda_executable", default=None)
+if force_executable == "None":
+    force_executable = None
 
+result = {True: [], False: []}
 thread_lock = Lock()
+result_lock = Lock()
 
 class ProcessSample:
     def __init__(self, sample_path):
         self.malware_sample_path = os.path.dirname(sample_path)
         self.malware_sample = os.path.basename(sample_path)
         self.malware_hash = hashlib.sha256(self.malware_sample.encode()).hexdigest()
-        self.start_time = None
-        self.end_time = None
-        self.time_took = None
+        self.start_time, self.end_time, self.time_took = None, None, None
         self.need_ml = False
         self.is_packed = False
 
@@ -39,30 +44,36 @@ class ProcessSample:
             with thread_lock:  # Blocking state when running VM, only one VM can run at anytime
                 print_info(f"  -- Starting processing file '{self.malware_sample_path}/{self.malware_sample}'")
                 subprocess.run(["genisoimage", "-max-iso9660-filenames", "-RJ", "-o", "/payload.iso"] + [f"{self.malware_sample_path}/{self.malware_sample}", "/dll"], capture_output=True)
-                has_failed &= self.__run_subprocess("run_panda", [self.malware_sample])
-            time.sleep(2)
-            if dll_discover_activated:
-                has_failed &= self.__run_subprocess("discover_dlls")
-            time.sleep(2)
-            self.start_time = time.time()
-            has_failed &= self.__run_subprocess("read_replay", [self.malware_sample_path, self.malware_sample])
-            self.end_time = time.time()
-            self.time_took = self.end_time - self.start_time
+                has_failed = has_failed + self.__run_subprocess("run_panda", [self.malware_sample])
             if not has_failed:
-                break
+                time.sleep(2)
+                if dll_discover_activated:
+                    has_failed = has_failed + self.__run_subprocess("discover_dlls", [self.malware_hash])
+                if not has_failed:
+                    time.sleep(2)
+                    self.start_time = time.time()
+                    has_failed = has_failed + self.__run_subprocess("read_replay", [self.malware_sample_path, self.malware_sample])
+                    if not has_failed:
+                        self.end_time = time.time()
+                        self.time_took = self.end_time - self.start_time
+                        return True
             print_info(f"  !! An error occured when processing file '{self.malware_sample_path}/{self.malware_sample}': try {i+1} of {MAX_TRIES}")
+        return False
 
     def __run_subprocess(self, filename, parameters=[]):
         try:
-            output = subprocess.run(["python3", f"/addon/{filename}.py"] + parameters, capture_output=True)
+            output = subprocess.run(["python3", f"/addon/{filename}.py"] + parameters, capture_output=True, check=True)
             if is_debug:
                 write_debug_file(self.malware_sample, filename, output.stdout.decode())
             return False
-        except subprocess.CalledProcessError:
+        except subprocess.CalledProcessError as e:
+            if is_debug:
+                write_debug_file(self.malware_sample, filename, e.stderr.decode())
             return True
 
     def get_result(self):
         panda_output_dict = None
+        error = False
         if os.path.isfile(f"{self.malware_hash}_result.pickle"):
             with open(f"{self.malware_hash}_result.pickle", "rb") as f:
                 panda_output_dict = pickle.load(f)
@@ -83,16 +94,19 @@ class ProcessSample:
                 self.need_ml = True
             if self.need_ml:
                 self.execute_machine_learning()
+        else:
+            error = True
         print_info(f"  ** The result of the analysis of {self.malware_sample} is: {'PACKED' if self.is_packed else 'NOT-PACKED'} (Took {self.time_took} seconds to analyse)")
         write_output_file(self.malware_sample, "time", "time", {"start": self.start_time, "end": self.end_time})
-        write_output_file(self.malware_sample, "", "result", {"is_packed": self.is_packed})
+        write_output_file(self.malware_sample, "", "result", {"is_packed": self.is_packed, "error_during_analysis": error})
+        shutil.move(f"/replay/{self.malware_hash}_screenshot", f"/output/{re.split('.exe', self.malware_sample, flags=re.IGNORECASE)[0]}/screenshot")
         return self.is_packed
 
     def clean(self):
         try:
-            shutil.move(f"/replay/{self.malware_hash}_screenshot", f"/output/{re.split('.exe', self.malware_sample, flags=re.IGNORECASE)[0]}/screenshot")
-            os.remove(f"/replay/{self.malware_hash}-rr-nondet.log")
-            os.remove(f"/replay/{self.malware_hash}-rr-snp")
+            if not is_debug:
+                os.remove(f"/replay/{self.malware_hash}-rr-nondet.log")
+                os.remove(f"/replay/{self.malware_hash}-rr-snp")
             os.remove(f"{self.malware_hash}_result.pickle")
         except FileNotFoundError:
             pass
@@ -168,49 +182,45 @@ def process_sample(q):
         if sample_path is None:
             break
         process = ProcessSample(sample_path)
-        process.launch()
-        is_packed = process.get_result()
-        result[is_packed].append(process.malware_sample)
-        process.clean()
+        if process.launch():
+            is_packed = process.get_result()
+            with result_lock:
+                result[is_packed].append(process.malware_sample)
+            process.clean()
         q.task_done()
 
 
 if __name__ == "__main__":
-    is_silent = os.getenv("panda_silent", default=False) == "True"
-    is_debug = os.getenv("panda_debug", default=False) == "True"
-    force_executable = os.getenv("panda_executable", default=None)
-    if force_executable == "None":
-        force_executable = None
-
     if is_debug:
         print_info("DEBUGGING ACTIVATED")
     if force_executable is not None:
         print_info(f"MALWARE ANALYSED: {force_executable}")
 
     print_info("++ Launching")
-    result = {True: [], False: []}
     if force_executable is None:
-        already_analysed = [name for name in os.listdir("/output")]
-        files_to_analyse = [os.path.join(root, name) for root, dirs, files in os.walk("/payload") for name in files if name.lower().endswith(".exe") and name.split('.')[0] not in already_analysed]
+        already_analysed = [name.lower().split('.exe')[0] for name in os.listdir("/output")]
+        files_to_analyse = [os.path.join(root, name) for root, dirs, files in os.walk("/payload") for name in files if name.lower().endswith(".exe") and name not in already_analysed]
     else:
         files_to_analyse = [force_executable]
     q = Queue(len(files_to_analyse))
     NUMBER_OF_PARALLEL_EXECUTION = min(len(files_to_analyse), NUMBER_OF_PARALLEL_EXECUTION)
-    for i in range(NUMBER_OF_PARALLEL_EXECUTION):
+    for _ in range(NUMBER_OF_PARALLEL_EXECUTION):
         worker = Thread(target=process_sample, args=(q,))
         worker.start()
-    for sample_path in files_to_analyse:
-        q.put(sample_path)
+    for sample in files_to_analyse:
+        q.put(sample)
     q.join()
+
     print_info("++ Finished")
-    # Show results
-    total_analyzed = len(result[True])+len(result[False])
+    total_analyzed = len(result[True]) + len(result[False])
     percent_packed, percent_not_packed = 0, 0
     if total_analyzed > 0:
         percent_packed = len(result[True])/total_analyzed
         percent_not_packed = len(result[False])/total_analyzed
-    print_info("*** % packed: {}\n*** % non-packed: {}".format(percent_packed, percent_not_packed))
-    print_info("*** Packed list: {}".format(result[True]))
-    print_info("*** Non-Packed list: {}".format(result[False]))
-    sys.exit(0)
-
+        print_info(f"*** % packed: {percent_packed}\n*** % non-packed: {percent_not_packed}")
+        print_info(f"*** Packed list: {result[True]}")
+        print_info(f"*** Non-Packed list: {result[False]}")
+        sys.exit(0)
+    else:
+        print_info("*** No sample was left to analyse !")
+        sys.exit(1)
