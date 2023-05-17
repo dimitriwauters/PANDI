@@ -191,7 +191,7 @@ if __name__ == "__main__":
     result = {True: [], False: []}
     if force_executable is None:
         already_analysed = [name for name in os.listdir("/output")]
-        files_to_analyse = [os.path.join(root, name) for root, dirs, files in os.walk("/payload") for name in files if name.lower().endswith(".exe") and name.split('.')[0] not in already_analysed]
+        files_to_analyse = [os.path.join(root, name) for root, dirs, files in os.walk("/payload") for name in files if name.lower().endswith(".exe") and name.split('.exe')[0] not in already_analysed]
     else:
         files_to_analyse = [force_executable]
     q = Queue(len(files_to_analyse))
