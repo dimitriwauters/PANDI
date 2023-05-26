@@ -11,7 +11,7 @@ from threading import Thread, Lock
 from utility import write_debug_file, write_output_file
 
 NUMBER_OF_PARALLEL_EXECUTION = int(os.getenv("panda_max_parallel_execution", default=4))
-MAX_TRIES = 3
+MAX_TRIES = 1
 
 entropy_activated = os.getenv("panda_entropy", default=False) == "True"
 memcheck_activated = os.getenv("panda_memcheck", default=False) == "True"
@@ -22,6 +22,7 @@ first_bytes_activated = os.getenv("panda_first_bytes", default=False) == "True"
 is_silent = os.getenv("panda_silent", default=False) == "True"
 is_debug = os.getenv("panda_debug", default=False) == "True"
 force_executable = os.getenv("panda_executable", default=None)
+timeout = int(os.getenv("panda_timeout", default=7200))
 if force_executable == "None":
     force_executable = None
 
@@ -52,7 +53,7 @@ class ProcessSample:
                 if not has_failed:
                     time.sleep(2)
                     self.start_time = time.time()
-                    has_failed = has_failed + self.__run_subprocess("read_replay", [self.malware_sample_path, self.malware_sample])
+                    has_failed = has_failed + self.__run_subprocess("read_replay", [self.malware_sample_path, self.malware_sample], timeout)
                     if not has_failed:
                         self.end_time = time.time()
                         self.time_took = self.end_time - self.start_time
@@ -60,15 +61,17 @@ class ProcessSample:
             print_info(f"  !! An error occured when processing file '{self.malware_sample_path}/{self.malware_sample}': try {i+1} of {MAX_TRIES}")
         return False
 
-    def __run_subprocess(self, filename, parameters=[]):
+    def __run_subprocess(self, filename, parameters=[], timeout = None):
         try:
-            output = subprocess.run(["python3", f"/addon/{filename}.py"] + parameters, capture_output=True, check=True)
+            output = subprocess.run(["python3", f"/addon/{filename}.py"] + parameters, timeout = timeout, capture_output=True, check=True)
             if is_debug:
                 write_debug_file(self.malware_sample, filename, output.stdout.decode())
             return False
         except subprocess.CalledProcessError as e:
             if is_debug:
                 write_debug_file(self.malware_sample, filename, e.stderr.decode())
+            return True
+        except subprocess.TimeoutExpired as e:
             return True
 
     def get_result(self):
@@ -104,9 +107,8 @@ class ProcessSample:
 
     def clean(self):
         try:
-            if not is_debug:
-                os.remove(f"/replay/{self.malware_hash}-rr-nondet.log")
-                os.remove(f"/replay/{self.malware_hash}-rr-snp")
+            os.remove(f"/replay/{self.malware_hash}-rr-nondet.log")
+            os.remove(f"/replay/{self.malware_hash}-rr-snp")
             os.remove(f"{self.malware_hash}_result.pickle")
         except FileNotFoundError:
             pass

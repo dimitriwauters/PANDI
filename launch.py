@@ -38,6 +38,7 @@ parser.add_argument("--dll", action='store_true', help="activate syscalls analys
 parser.add_argument("--dll_discover", action='store_true', help="activate dll discovering system", default=False)
 parser.add_argument("--sections_perms", action='store_true', help="activate sections permission analysis", default=False)
 parser.add_argument("--first_bytes", action='store_true', help="activate first bytes analysis", default=False)
+parser.add_argument("--timeout", action='store_true', help="timeout for the read_replay thread", default=7200)
 args = parser.parse_args()
 
 
