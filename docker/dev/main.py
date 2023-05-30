@@ -72,6 +72,7 @@ class ProcessSample:
                 write_debug_file(self.malware_sample, filename, e.stderr.decode())
             return True
         except subprocess.TimeoutExpired as e:
+            self.clean()
             return True
 
     def get_result(self):
