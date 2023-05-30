@@ -1,7 +1,7 @@
 import pickle
 import os
 import statistics
-
+import sys
 MALICIOUS_FUNCTIONS = ["GetProcAddress", "LoadLibrary", "Exitprocess", "GetModuleHandle", "VirtualAlloc",
                                      "VirtualFree", "GetModuleFilename", "CreateFile", "RegQueryValueEx", "MessageBox",
                                      "GetCommandLine", "VirtualProtect", "GetStartupInfo", "GetStdHandle", "RegOpenKeyEx"]
@@ -71,12 +71,16 @@ def create_features():
     
     
 if __name__ == "__main__":
-    directory = "output/"
+    if len(sys.argv) != 2:
+        directory = "output"
+    else:
+        directory = sys.argv[1]
     features = create_features()
-    with open("features.csv", "w") as f:
+    with open("features_" + directory + ".csv", "w") as f:
         f.write(",".join(features.keys()))
         f.write("\n")
     for sample in os.listdir(directory):
+       good = True
        sample_dir = os.path.join(directory, sample)
        if os.path.isdir(sample_dir):
          features = create_features()
@@ -137,6 +141,8 @@ if __name__ == "__main__":
                          features["write_execute_size"] = len(result["memory_write_exe_list"])
                          
                      elif filename == "first_bytes.pickle":
+                         if len(result["executed_bytes_list"]) == 0:
+                             good = False
                          for i in range(len(result["executed_bytes_list"])):
                              features[f"executed_byte_{i}"] = result["executed_bytes_list"][i]
                              
@@ -164,7 +170,8 @@ if __name__ == "__main__":
                                  features["median_oep_section_entropy"] = statistics.median(y)
                                  features["variance_oep_section_entropy"] = statistics.variance(y)
                                  features["stdev_oep_section_entropy"] = statistics.stdev(y)
-                         
-         with open("features.csv", "a") as f:
-             f.write(",".join(str(x) for x in features.values()))
-             f.write("\n")
+                                 
+         if good and features["number_total_entropy"] != -1:
+             with open("features_" + directory + ".csv", "a") as f:
+                 f.write(",".join(str(x) for x in features.values()))
+                 f.write("\n")

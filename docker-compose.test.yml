@@ -24,5 +24,6 @@ services:
       - panda_first_bytes=True
       #- panda_executable=upx_ADExplorer.exe
       #- panda_max_entropy_list_length=50
+      #- panda_timeout=3600
     #command: "python3 /addon/read_replay.py /payload upx_ADExplorer.exe"
     #command: "python3 /addon/discover_dlls.py"
