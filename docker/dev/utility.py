@@ -1,10 +1,12 @@
 from scipy.stats import entropy
 import os
 import pefile
+import random
 import pickle
 import hashlib
 import string
 import re
+
 
 class PEInformations:
     def __init__(self, panda, debugging_activated, process_path, process_name):
@@ -331,22 +333,23 @@ class SearchDLL:
 
 
 def write_debug_file(file_name, process_name, process_output):
-    name = re.split('.exe', file_name, flags=re.IGNORECASE)[0]
+    name = re.split('\.exe', file_name, flags=re.IGNORECASE)[0]
     with open(f"/debug/{name}_{process_name}_exec.txt", "w") as file:
         file.write(process_output)
 
 
 def write_output_file(file_name, type_of_analysis, debug_name, process_output):
-    name = re.split('.exe', file_name, flags=re.IGNORECASE)[0]
+    name = re.split('\.exe', file_name, flags=re.IGNORECASE)[0]
     folder_path = f"/output/{name}/{type_of_analysis}"
     if not os.path.isdir(folder_path):
         os.makedirs(folder_path)
     with open(f"{folder_path}/{debug_name}.pickle", "wb") as file:
         pickle.dump(process_output, file, protocol=pickle.HIGHEST_PROTOCOL)
 
+
 def read_output_file(file_name, type_of_analysis, debug_name):
     result = {}
-    name = re.split('.exe', file_name, flags=re.IGNORECASE)[0]
+    name = re.split('\.exe', file_name, flags=re.IGNORECASE)[0]
     folder_path = f"/output/{name}/{type_of_analysis}"
     if os.path.isdir(folder_path):
         try:

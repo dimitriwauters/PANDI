@@ -29,6 +29,7 @@ result = {True: [], False: []}
 thread_lock = Lock()
 result_lock = Lock()
 
+
 class ProcessSample:
     def __init__(self, sample_path):
         self.malware_sample_path = os.path.dirname(sample_path)
@@ -72,6 +73,7 @@ class ProcessSample:
             return True
 
     def get_result(self):
+        name_re = re.split('\.exe', self.malware_sample, flags=re.IGNORECASE)[0]
         panda_output_dict = None
         error = False
         if os.path.isfile(f"{self.malware_hash}_result.pickle"):
@@ -99,14 +101,13 @@ class ProcessSample:
         print_info(f"  ** The result of the analysis of {self.malware_sample} is: {'PACKED' if self.is_packed else 'NOT-PACKED'} (Took {self.time_took} seconds to analyse)")
         write_output_file(self.malware_sample, "time", "time", {"start": self.start_time, "end": self.end_time})
         write_output_file(self.malware_sample, "", "result", {"is_packed": self.is_packed, "error_during_analysis": error})
-        shutil.move(f"/replay/{self.malware_hash}_screenshot", f"/output/{re.split('.exe', self.malware_sample, flags=re.IGNORECASE)[0]}/screenshot")
+        shutil.move(f"/replay/{self.malware_hash}_screenshot", f"/output/{name_re}/screenshot")
         return self.is_packed
 
     def clean(self):
         try:
-            if not is_debug:
-                os.remove(f"/replay/{self.malware_hash}-rr-nondet.log")
-                os.remove(f"/replay/{self.malware_hash}-rr-snp")
+            os.remove(f"/replay/{self.malware_hash}-rr-nondet.log")
+            os.remove(f"/replay/{self.malware_hash}-rr-snp")
             os.remove(f"{self.malware_hash}_result.pickle")
         except FileNotFoundError:
             pass
@@ -172,9 +173,11 @@ class ProcessSample:
         with open("features.csv", 'r') as f:
             pass"""
 
+
 def print_info(text):
     if not is_silent:
         print(text, flush=True)
+
 
 def process_sample(q):
     while True:
@@ -190,16 +193,27 @@ def process_sample(q):
         q.task_done()
 
 
+def initial_cleaning():
+    for filename in os.listdir("/replay"):
+        file_path = os.path.join("/replay", filename)
+        try:
+            if os.path.isfile(file_path) or os.path.islink(file_path):
+                os.unlink(file_path)
+        except FileNotFoundError:
+            pass
+
+
 if __name__ == "__main__":
     if is_debug:
         print_info("DEBUGGING ACTIVATED")
     if force_executable is not None:
         print_info(f"MALWARE ANALYSED: {force_executable}")
 
+    initial_cleaning()
     print_info("++ Launching")
     if force_executable is None:
-        already_analysed = [name.lower().split('.exe')[0] for name in os.listdir("/output")]
-        files_to_analyse = [os.path.join(root, name) for root, dirs, files in os.walk("/payload") for name in files if name.lower().endswith(".exe") and name not in already_analysed]
+        already_analysed = [f"{name.lower()}.exe" for name in os.listdir("/output")]
+        files_to_analyse = [os.path.join(root, name) for root, dirs, files in os.walk("/payload") for name in files if name.lower().endswith(".exe") and name.lower() not in already_analysed]
     else:
         files_to_analyse = [force_executable]
     q = Queue(len(files_to_analyse))

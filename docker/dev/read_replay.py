@@ -82,7 +82,6 @@ def before_block_exec(env, tb):
     global entropy_activated, memcheck_activated, dll_activated, last_section_executed, section_perms_check, first_bytes_activated
     if not panda.in_kernel(env) and panda.current_asid(env) in sample_asid:
         current_position = "Unknown"
-        current_section = None
         pc = panda.arch.get_pc(env)
         if not pe_infos.headers:
             sample_base = None
@@ -145,9 +144,10 @@ def before_block_exec(env, tb):
                     print(f"(BLOCK_EXEC) DETECTED DLL AT PC {hex(pc)} (Detected position: {current_position})", flush=True)
         # =================================== ENTROPY CHECK ===================================
         if entropy_activated and pe_infos.headers:
-            global block_num
+            global block_num, entropy_granularity
             if block_num > entropy_granularity:
                 block_num = 0
+                entropy_granularity += 10
                 memory, success = entropy_analysis.read_memory(env)
                 if success:
                     entropy_analysis.analyse_entropy(env, memory)
@@ -196,6 +196,7 @@ def before_block_exec(env, tb):
             panda.end_replay()
         except:
             pass
+
 
 @panda.ppp("syscalls2", "on_all_sys_enter2", autoload=False)
 def on_all_sys_enter2(env, pc, call, rp):
@@ -258,8 +259,10 @@ def asid_changed(env, old_asid, new_asid):
                 panda.enable_callback("before_block_exec")
     return 0
 
+
 def is_known_dll_addr(addr):
     return addr in pe_infos.imports.values() or addr in dynamic_dll.dynamic_dll_methods.values() or addr in discovered_dll.dll.keys()
+
 
 if __name__ == "__main__":
     if len(sys.argv) > 2:
