@@ -23,6 +23,8 @@ is_silent = os.getenv("panda_silent", default=False) == "True"
 is_debug = os.getenv("panda_debug", default=False) == "True"
 force_executable = os.getenv("panda_executable", default=None)
 timeout = int(os.getenv("panda_timeout", default=7200))
+if timeout == 0:
+    timeout = None
 if force_executable == "None":
     force_executable = None
 
@@ -62,9 +64,9 @@ class ProcessSample:
             print_info(f"  !! An error occured when processing file '{self.malware_sample_path}/{self.malware_sample}': try {i+1} of {MAX_TRIES}")
         return False
 
-    def __run_subprocess(self, filename, parameters=[], timeout = None):
+    def __run_subprocess(self, filename, parameters=[], timeout=None):
         try:
-            output = subprocess.run(["python3", f"/addon/{filename}.py"] + parameters, timeout = timeout, capture_output=True, check=True)
+            output = subprocess.run(["python3", f"/addon/{filename}.py"] + parameters, timeout=timeout, capture_output=True, check=True)
             if is_debug:
                 write_debug_file(self.malware_sample, filename, output.stdout.decode())
             return False
@@ -72,10 +74,10 @@ class ProcessSample:
             if is_debug:
                 write_debug_file(self.malware_sample, filename, e.stderr.decode())
             return True
-        except subprocess.TimeoutExpired as e:
-            self.get_result()
-            self.clean()
-            return True
+        except subprocess.TimeoutExpired:
+            if is_debug:
+                write_debug_file(self.malware_sample, filename, "timeout")
+            return False
 
     def get_result(self):
         name_re = re.split('\.exe', self.malware_sample, flags=re.IGNORECASE)[0]
@@ -154,7 +156,8 @@ class ProcessSample:
             write_output_file(self.malware_sample, "entropy", header_name, file_dict)
 
     def dll(self, panda_output_dict):
-        file_dict = {"initial_iat": panda_output_dict["dll_inital_iat"],
+        file_dict = {"initial_iat": panda_output_dict["dll_initial_iat"],
+                     "iat_addr_modified": panda_output_dict["dll_addr_iat_modified"],
                      "dynamically_loaded_dll": panda_output_dict["dll_dynamically_loaded_dll"],
                      "call_nbrs_generic": panda_output_dict["dll_call_nbrs_generic"],
                      "call_nbrs_malicious": panda_output_dict["dll_call_nbrs_malicious"],
@@ -225,6 +228,7 @@ if __name__ == "__main__":
     NUMBER_OF_PARALLEL_EXECUTION = min(len(files_to_analyse), NUMBER_OF_PARALLEL_EXECUTION)
     for _ in range(NUMBER_OF_PARALLEL_EXECUTION):
         worker = Thread(target=process_sample, args=(q,))
+        worker.daemon = True
         worker.start()
     for sample in files_to_analyse:
         q.put(sample)

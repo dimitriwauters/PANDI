@@ -120,6 +120,10 @@ def before_block_exec(env, tb):
                 function_name = ""
                 if pc in pe_infos.imports.values():  # If current addr correspond to a DLL method call addr
                     function_name = pe_infos.get_import_name_from_addr(pc)
+                    if pc in dynamic_dll.dynamic_dll_methods.values():
+                        dynamic_function_name = dynamic_dll.get_dll_method_name_from_addr(pc)
+                        if function_name != dynamic_function_name:  # Address of an IAT function modified by the packer
+                            dll_analysis.iat_address_modified(function_name, dynamic_function_name)
                     current_position = f"IAT_DLL({function_name})"
                     dll_analysis.increase_call_nbr("iat", function_name)
                 elif pc in dynamic_dll.dynamic_dll_methods.values():
@@ -285,7 +289,8 @@ if __name__ == "__main__":
                 result["entropy"] = entropy_analysis.entropy
                 result["entropy_initial_oep"] = pe_infos.initial_EP_section
                 result["entropy_unpacked_oep"] = pe_infos.unpacked_EP_section
-                result["dll_inital_iat"] = dynamic_dll.iat_dll
+                result["dll_initial_iat"] = dynamic_dll.iat_dll
+                result["dll_addr_iat_modified"] = dynamic_dll.iat_modified
                 result["function_inital_iat"] = list(pe_infos.imports.keys())
                 result["dll_dynamically_loaded_dll"] = dynamic_dll.loaded_dll
                 result["dll_call_nbrs_generic"] = dll_analysis.get_generic_functions()

@@ -187,6 +187,7 @@ class DynamicLoadedDLL:
         self.iat_dll = []
         self.loaded_dll = {"before": [], "after": []}
         self.dynamic_dll_methods = {}
+        self.iat_modified = []
 
     def initial_iat(self, dll_name):
         dll_name = dll_name.lower()
@@ -212,6 +213,9 @@ class DynamicLoadedDLL:
             return list(self.dynamic_dll_methods.keys())[list(self.dynamic_dll_methods.values()).index(addr)]
         except ValueError:
             return None
+
+    def iat_address_modified(self, iat_name, dynamic_name):
+        self.iat_modified.append((iat_name, dynamic_name))
 
 
 class DLLCallAnalysis:
