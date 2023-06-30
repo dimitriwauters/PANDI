@@ -47,6 +47,7 @@ options:
   --dll_discover        activate dll discovering system
   --sections_perms      activate sections permission analysis
   --first_bytes         activate first bytes analysis
+  --count_instr         activate the instruction counter
 ```
 
 #### docker-compose
