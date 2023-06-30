@@ -10,7 +10,7 @@ from queue import Queue
 from threading import Thread, Lock
 from utility import write_debug_file, write_output_file
 
-NUMBER_OF_PARALLEL_EXECUTION = int(os.getenv("panda_max_parallel_execution", default=1))
+NUMBER_OF_PARALLEL_EXECUTION = int(os.getenv("panda_max_parallel_execution", default=4))
 MAX_TRIES = 1
 
 entropy_activated = os.getenv("panda_entropy", default=False) == "True"
@@ -227,7 +227,7 @@ if __name__ == "__main__":
     print_info("++ Launching")
     if force_executable is None:
         already_analysed = [f"{name.lower()}.exe" for name in os.listdir("/output")]
-        files_to_analyse = [os.path.join(root, name) for root, dirs, files in os.walk("/payload") for name in files if name.lower() not in already_analysed]
+        files_to_analyse = [os.path.join(root, name) for root, dirs, files in os.walk("/payload") for name in files if name.lower().endswith(".exe") and name.lower() not in already_analysed]
     else:
         files_to_analyse = [force_executable]
     q = Queue(len(files_to_analyse))

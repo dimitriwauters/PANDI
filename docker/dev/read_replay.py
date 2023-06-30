@@ -186,7 +186,6 @@ def before_block_exec(env, tb):
             global count
             section_name = pe_infos.get_section_from_addr(pc)
             if section_name:
-                print("icount      " + str(tb.icount) + "   " + str(tb.pc) + "   " + str(pc))
                 count += tb.icount
     # =============================== EXEC WRITE DETECTION ===============================
     if memcheck_activated:
