@@ -15,6 +15,7 @@ MAX_TRIES = 1
 
 entropy_activated = os.getenv("panda_entropy", default=False) == "True"
 memcheck_activated = os.getenv("panda_memcheck", default=False) == "True"
+max_memory_write_exe_list_length = int(os.getenv("panda_max_memory_write_exe_list_length", default=1000))
 dll_activated = os.getenv("panda_dll", default=False) == "True"
 dll_discover_activated = os.getenv("panda_dll_discover", default=False) == "True"
 sections_activated = os.getenv("panda_section_perms", default=False) == "True"
@@ -41,6 +42,7 @@ class ProcessSample:
         self.start_time, self.end_time, self.time_took = None, None, None
         self.need_ml = False
         self.is_packed = False
+        self.timeout_expired = False
 
     def launch(self):
         for i in range(MAX_TRIES):
@@ -65,18 +67,31 @@ class ProcessSample:
         return False
 
     def __run_subprocess(self, filename, parameters=[], timeout=None):
+        if is_debug:
+            data_out = subprocess.PIPE
+        else:
+            data_out = subprocess.DEVNULL
+        process = subprocess.Popen(["python3", f"/addon/{filename}.py"] + parameters, stdout=data_out, stderr=data_out)
+        outs, errs = None, None
         try:
-            output = subprocess.run(["python3", f"/addon/{filename}.py"] + parameters, timeout=timeout, capture_output=True, check=True)
             if is_debug:
-                write_debug_file(self.malware_sample, filename, output.stdout.decode())
+                outs, errs = process.communicate(timeout=timeout)
+                write_debug_file(self.malware_sample, filename, outs.decode())
+            else:
+                process.wait(timeout=timeout)
             return False
         except subprocess.CalledProcessError as e:
             if is_debug:
                 write_debug_file(self.malware_sample, filename, e.stderr.decode())
             return True
         except subprocess.TimeoutExpired:
+            process.terminate()
+            self.timeout_expired = True
             if is_debug:
-                write_debug_file(self.malware_sample, filename, "timeout")
+                if outs is not None:
+                    write_debug_file(self.malware_sample, filename, outs.decode())
+                else:
+                    write_debug_file(self.malware_sample, filename, "timeout")
             return False
 
     def get_result(self):
@@ -107,7 +122,9 @@ class ProcessSample:
             error = True
         print_info(f"  ** The result of the analysis of {self.malware_sample} is: {'PACKED' if self.is_packed else 'NOT-PACKED'} (Took {self.time_took} seconds to analyse)")
         write_output_file(self.malware_sample, "time", "time", {"start": self.start_time, "end": self.end_time})
-        write_output_file(self.malware_sample, "", "result", {"is_packed": self.is_packed, "error_during_analysis": error})
+        write_output_file(self.malware_sample, "", "result", {"is_packed": self.is_packed,
+                                                              "error_during_analysis": error,
+                                                              "has_timeout": self.timeout_expired})
         shutil.move(f"/replay/{self.malware_hash}_screenshot", f"/output/{name_re}/screenshot")
         return self.is_packed
 
@@ -130,7 +147,8 @@ class ProcessSample:
                 addr = elem[1] % 134  # Modulo x86, the length of an instruction
                 print(addr)"""
             self.is_packed = True
-        write_output_file(self.malware_sample, "memcheck", "memcheck", {"memory_write_exe_list": memory_write_list})
+        write_output_file(self.malware_sample, "memcheck", "memcheck", {"memory_write_exe_list": memory_write_list,
+                                                                        "list_limit": max_memory_write_exe_list_length})
 
     def entropy(self, panda_output_dict):
         entropy = panda_output_dict["entropy"]

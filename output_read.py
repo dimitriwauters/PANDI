@@ -2,15 +2,25 @@ import matplotlib.pyplot as plt
 import os
 import sys
 import statistics
-import time
 import pickle
 
 OUTPUT_PATH = "output"
+
 
 class Analysis:
     def __init__(self, name):
         self.sample_name = name
         self.directories = [x[0].split('/')[-1] for x in os.walk(f"{OUTPUT_PATH}/{name}")][1:]
+
+    def analyse_memcheck(self):
+        with open(f"{OUTPUT_PATH}/{self.sample_name}/memcheck/memcheck.pickle", 'rb') as file:
+            data = pickle.load(file)
+            result = ""
+            for elem in data["memory_write_exe_list"]:
+                result += "0x" + str(hex(elem))[2:] + " "
+            print("Memory write&executed addresses :\n", result)
+            if "list_limit" in data:
+                print(f"List size: {len(result)} | Max list size: {data['list_limit']}")
 
     def analyse_entropy(self):
         sections = [x for _, _, x in os.walk(f"{OUTPUT_PATH}/{self.sample_name}/entropy")][0]
@@ -92,7 +102,10 @@ if __name__ == "__main__":
         analysis = Analysis(sample_name)
         if analysis.directories:
             with open(f"{OUTPUT_PATH}/{sample_name}/result.pickle", 'rb') as file:
-                print("Is Packed ?", pickle.load(file)["is_packed"])
+                d = pickle.load(file)
+                print("Is Packed ?", d["is_packed"])
+                if "has_timeout" in d:
+                    print("Has Timeout ?", d["has_timeout"])
                 print("Available analysis:", ",".join(analysis.directories))
                 for directory in analysis.directories:
                     try:
