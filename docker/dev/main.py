@@ -20,6 +20,7 @@ dll_activated = os.getenv("panda_dll", default=False) == "True"
 dll_discover_activated = os.getenv("panda_dll_discover", default=False) == "True"
 sections_activated = os.getenv("panda_section_perms", default=False) == "True"
 first_bytes_activated = os.getenv("panda_first_bytes", default=False) == "True"
+count_instr_activated = os.getenv("panda_count_instr", default=False) == "True"
 is_silent = os.getenv("panda_silent", default=False) == "True"
 is_debug = os.getenv("panda_debug", default=False) == "True"
 force_executable = os.getenv("panda_executable", default=None)
@@ -116,6 +117,8 @@ class ProcessSample:
             if first_bytes_activated:
                 self.first_bytes(panda_output_dict)
                 self.need_ml = True
+            if count_instr_activated:
+                self.count_instr(panda_output_dict)
             if self.need_ml:
                 self.execute_machine_learning()
         else:
@@ -191,6 +194,9 @@ class ProcessSample:
         file_dict = {"executed_bytes_list": panda_output_dict["executed_bytes_list"],
                      "initial_EP": panda_output_dict["initial_EP"], "real_EP": panda_output_dict["real_EP"]}
         write_output_file(self.malware_sample, "first_bytes", "first_bytes", file_dict)
+    def count_instr(self, panda_output_dict):
+        file_dict = {"count": panda_output_dict["count"]}
+        write_output_file(self.malware_sample, "count_instr", "count_instr", file_dict)
 
     def execute_machine_learning(self):
         # TODO: Implement

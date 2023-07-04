@@ -20,6 +20,7 @@ cmd_pid = None
 memory_write_exe_list = {}
 memory_write_list = {}
 executed_bytes_list = []
+count = 0
 real_ep = -1
 
 force_complete_replay = os.getenv("panda_force_complete_replay", default=False) == "True"
@@ -33,6 +34,7 @@ dll_activated = os.getenv("panda_dll", default=False) == "True"
 dll_discover_activated = os.getenv("panda_dll_discover", default=False) == "True"
 section_activated = os.getenv("panda_section_perms", default=False) == "True"
 first_bytes_activated = os.getenv("panda_first_bytes", default=False) == "True"
+count_instr_activated = os.getenv("panda_count_instr", default=False) == "True"
 
 block_num = entropy_granularity
 entropy_analysis = None
@@ -79,7 +81,7 @@ def virt_mem_after_read(env, pc, addr, size, buf):
 
 @panda.cb_before_block_exec(enabled=False)
 def before_block_exec(env, tb):
-    global entropy_activated, memcheck_activated, dll_activated, last_section_executed, section_perms_check, first_bytes_activated
+    global entropy_activated, memcheck_activated, dll_activated, last_section_executed, section_perms_check, first_bytes_activated, count_instr_activated
     if not panda.in_kernel(env) and panda.current_asid(env) in sample_asid:
         current_position = "Unknown"
         pc = panda.arch.get_pc(env)
@@ -179,6 +181,12 @@ def before_block_exec(env, tb):
                 if is_debug:
                     print(f"(BLOCK_EXEC) DETECTED FIRST BYTES: {[str(hex(elem))[2:] for elem in executed_bytes_list]}", flush=True)
                 first_bytes_activated = False
+        # ================================ COUNT INSTRUCTIONS ================================
+        if count_instr_activated:
+            global count
+            section_name = pe_infos.get_section_from_addr(pc)
+            if section_name:
+                count += tb.icount
     # =============================== EXEC WRITE DETECTION ===============================
     if memcheck_activated:
         global memory_write_list, memory_write_exe_list
@@ -195,7 +203,7 @@ def before_block_exec(env, tb):
                 section_name = pe_infos.get_section_from_addr(pc)
                 print(f"(BLOCK_EXEC) FOUND PREVIOUSLY WRITTEN ADDR BEING EXECUTED! PC: {hex(pc)} | Section: {section_name}", flush=True)
     # ====================================================================================
-    if not force_complete_replay and not entropy_activated and not memcheck_activated and not dll_activated and not section_activated and not first_bytes_activated:
+    if not force_complete_replay and not entropy_activated and not memcheck_activated and not dll_activated and not section_activated and not first_bytes_activated and not count_instr_activated:
         try:
             panda.end_replay()
         except:
@@ -283,6 +291,7 @@ def end_analysis():
               "section_perms_changed": section_perms_check.permissions_modifications,
               "executed_bytes_list": executed_bytes_list,
               "real_EP": real_ep,
+              "count": count,
               "initial_EP": pe_infos.initial_EP,
               "dll_initial_iat": dynamic_dll.iat_dll,
               "dll_addr_iat_modified": dynamic_dll.iat_modified,
@@ -306,7 +315,7 @@ if __name__ == "__main__":
         try:
             if dll_discover_activated:
                 discovered_dll.get_discovered_dlls()
-            if entropy_activated or memcheck_activated or dll_activated or section_activated or first_bytes_activated:
+            if entropy_activated or memcheck_activated or dll_activated or section_activated or first_bytes_activated or count_instr_activated:
                 panda.run_replay(f"/replay/{malware_hash}")
                 end_analysis()
         except Exception as e:
