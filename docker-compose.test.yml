@@ -22,7 +22,7 @@ services:
       - panda_dll_discover=True
       - panda_section_perms=False
       - panda_first_bytes=True
-      - panda_count_instr = True
+      - panda_count_instr=True
       #- panda_executable=upx_ADExplorer.exe
       #- panda_max_entropy_list_length=50
       #- panda_timeout=3600
