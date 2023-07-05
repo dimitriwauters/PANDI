@@ -1,3 +1,5 @@
+import time
+
 import cffi
 from pandare import Panda, panda_expect
 from utility import EntropyAnalysis, PEInformations, DynamicLoadedDLL, SearchDLL, DLLCallAnalysis, SectionPermissionCheck
@@ -276,35 +278,8 @@ def is_known_dll_addr(addr):
     return addr in pe_infos.imports.values() or addr in dynamic_dll.dynamic_dll_methods.values() or addr in discovered_dll.dll.keys()
 
 
-def end_analysis():
-    try:
-        panda.end_replay()
-    except Exception:
-        pass
-    result = {"memory_write_exe_list": memory_write_exe_list,
-              "entropy": entropy_analysis.entropy,
-              "entropy_initial_oep": pe_infos.initial_EP_section,
-              "entropy_unpacked_oep": pe_infos.unpacked_EP_section,
-              "function_inital_iat": list(pe_infos.imports.keys()),
-              "dll_dynamically_loaded_dll": dynamic_dll.loaded_dll,
-              "dll_GetProcAddress_returns": list(dynamic_dll.dynamic_dll_methods.keys()),
-              "section_perms_changed": section_perms_check.permissions_modifications,
-              "executed_bytes_list": executed_bytes_list,
-              "real_EP": real_ep,
-              "count": count,
-              "initial_EP": pe_infos.initial_EP,
-              "dll_initial_iat": dynamic_dll.iat_dll,
-              "dll_addr_iat_modified": dynamic_dll.iat_modified,
-              "dll_call_nbrs_generic": dll_analysis.get_generic_functions(),
-              "dll_call_nbrs_malicious": dll_analysis.get_malicious_functions()}
-    with open(f"{malware_hash}_result.pickle", "wb") as f:
-        pickle.dump(result, f, protocol=pickle.HIGHEST_PROTOCOL)
-
-
 if __name__ == "__main__":
     if len(sys.argv) > 2:
-        signal.signal(signal.SIGINT, end_analysis)
-        signal.signal(signal.SIGTERM, end_analysis)
         malware_sample_path = sys.argv[1]
         malware_sample = sys.argv[2]
         malware_hash = hashlib.sha256(malware_sample.encode()).hexdigest()
@@ -316,8 +291,28 @@ if __name__ == "__main__":
             if dll_discover_activated:
                 discovered_dll.get_discovered_dlls()
             if entropy_activated or memcheck_activated or dll_activated or section_activated or first_bytes_activated or count_instr_activated:
-                panda.run_replay(f"/replay/{malware_hash}")
-                end_analysis()
+                try:
+                    panda.run_replay(f"/replay/{malware_hash}")
+                except KeyboardInterrupt:
+                    panda.end_replay()
+                result = {"memory_write_exe_list": memory_write_exe_list,
+                          "entropy": entropy_analysis.entropy,
+                          "entropy_initial_oep": pe_infos.initial_EP_section,
+                          "entropy_unpacked_oep": pe_infos.unpacked_EP_section,
+                          "function_inital_iat": list(pe_infos.imports.keys()),
+                          "dll_dynamically_loaded_dll": dynamic_dll.loaded_dll,
+                          "dll_GetProcAddress_returns": list(dynamic_dll.dynamic_dll_methods.keys()),
+                          "section_perms_changed": section_perms_check.permissions_modifications,
+                          "executed_bytes_list": executed_bytes_list,
+                          "real_EP": real_ep,
+                          "count": count,
+                          "initial_EP": pe_infos.initial_EP,
+                          "dll_initial_iat": dynamic_dll.iat_dll,
+                          "dll_addr_iat_modified": dynamic_dll.iat_modified,
+                          "dll_call_nbrs_generic": dll_analysis.get_generic_functions(),
+                          "dll_call_nbrs_malicious": dll_analysis.get_malicious_functions()}
+                with open(f"{malware_hash}_result.pickle", "wb") as f:
+                    pickle.dump(result, f, protocol=pickle.HIGHEST_PROTOCOL)
         except Exception as e:
             print(e)
     else:

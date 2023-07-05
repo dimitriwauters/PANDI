@@ -2,6 +2,7 @@ import os
 import subprocess
 import sys
 import time
+import signal
 import pickle
 import shutil
 import re
@@ -86,8 +87,9 @@ class ProcessSample:
                 write_debug_file(self.malware_sample, filename, e.stderr.decode())
             return True
         except subprocess.TimeoutExpired:
-            process.terminate()
             self.timeout_expired = True
+            process.send_signal(signal.SIGTERM)
+            process.wait()
             if is_debug:
                 if outs is not None:
                     write_debug_file(self.malware_sample, filename, outs.decode())
@@ -194,6 +196,7 @@ class ProcessSample:
         file_dict = {"executed_bytes_list": panda_output_dict["executed_bytes_list"],
                      "initial_EP": panda_output_dict["initial_EP"], "real_EP": panda_output_dict["real_EP"]}
         write_output_file(self.malware_sample, "first_bytes", "first_bytes", file_dict)
+
     def count_instr(self, panda_output_dict):
         file_dict = {"count": panda_output_dict["count"]}
         write_output_file(self.malware_sample, "count_instr", "count_instr", file_dict)
