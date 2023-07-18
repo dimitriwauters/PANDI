@@ -21,6 +21,8 @@ memory_write_list = {}
 executed_bytes_list = []
 count = 0
 real_ep = -1
+ret_addr = 0
+func_name = ""
 
 force_complete_replay = os.getenv("panda_force_complete_replay", default=False) == "True"
 max_memory_write_exe_list_length = int(os.getenv("panda_max_memory_write_exe_list_length", default=1000))
@@ -80,7 +82,7 @@ def virt_mem_after_read(env, pc, addr, size, buf):
 
 @panda.cb_before_block_exec(enabled=False)
 def before_block_exec(env, tb):
-    global entropy_activated, memcheck_activated, dll_activated, last_section_executed, section_perms_check, first_bytes_activated, count_instr_activated
+    global entropy_activated, memcheck_activated, dll_activated, last_section_executed, section_perms_check, first_bytes_activated, count_instr_activated, ret_addr, func_name
     if not panda.in_kernel(env) and panda.current_asid(env) in sample_asid:
         current_position = "Unknown"
         pc = panda.arch.get_pc(env)
@@ -117,6 +119,12 @@ def before_block_exec(env, tb):
                     section_perms_check.add_section_permission(env.rr_guest_instr_count, section_name, "execute", True)
         # ===================================== DLL CHECK =====================================
         if dll_activated and pe_infos.headers:
+            #get the address of the function right after getprocaddress returns
+            if pc == ret_addr:
+                func_addr = panda.arch.get_retval(env, convention="syscall")
+                dynamic_dll.add_dll_method(func_name, func_addr)
+                print("GetProcAddress", func_name, hex(func_addr))
+            #address of a known external function
             if is_known_dll_addr(pc):
                 function_name = ""
                 if pc in pe_infos.imports.values():  # If current addr correspond to a DLL method call addr
@@ -139,12 +147,14 @@ def before_block_exec(env, tb):
 
                 syscall_result = syscall_interpreter.read_usercall(env, function_name)
                 if syscall_result is not None:
-                    print("\t", syscall_result["name"], hex(syscall_result["addr"]))
                     if function_name == "GetProcAddress" or function_name == "LdrGetProcedureAddress":
-                        dynamic_dll.add_dll_method(syscall_result["name"], syscall_result["addr"])
+                        #if we are in getprocaddress we save the return address to retrieve eax later
+                        ret_addr = syscall_result["ret"]
+                        func_name = syscall_result["name"]
                     elif "LoadLibrary" in function_name:
+                        print("LoadLibrary", syscall_result["name"])
                         dynamic_dll.add_dll(syscall_result["name"])
-
+                        
                 if is_debug and ("DISCOVERED_DLL" not in current_position or dll_analysis.is_function_malicious(function_name)):
                     print(f"(BLOCK_EXEC) DETECTED DLL AT PC {hex(pc)} (Detected position: {current_position})", flush=True)
         # =================================== ENTROPY CHECK ===================================

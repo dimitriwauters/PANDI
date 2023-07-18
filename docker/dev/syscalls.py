@@ -95,12 +95,9 @@ class SysCallsInterpreter:
             lpProcName_val = lpProcName_raw[:lpProcName_raw.find(b'\x00')].decode()
         except ValueError:
             pass
-        ret_addr = self.panda.arch.get_retval(env, convention="syscall")
-        """if ret_addr != 0x75830000:
-            return {"name": lpProcName_val, "addr": ret_addr}
-        else:
-            return {"name": lpProcName_val, "addr": 0}"""
-        return {"name": lpProcName_val, "addr": ret_addr}
+        func_addr = self.panda.arch.get_retval(env, convention="syscall")
+        ret_addr = self.panda.arch.get_return_address(env)
+        return {"name": lpProcName_val, "addr": func_addr,"ret": ret_addr}
 
     def _LoadLibraryA(self, env):
         """
@@ -115,7 +112,7 @@ class SysCallsInterpreter:
             lpLibFileName_val = lpLibFileName_raw[:lpLibFileName_raw.find(b'\x00')].decode()
         except ValueError:
             pass
-        return {"name": lpLibFileName_val, "addr": self.panda.arch.get_retval(env, convention="syscall")}
+        return {"name": lpLibFileName_val}
 
     def _LoadLibraryW(self, env):
         return self._LoadLibraryA(env)
