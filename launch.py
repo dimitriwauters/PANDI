@@ -53,6 +53,7 @@ def signal_handler(sig, frame):
     docker_client.containers.get("pandi").stop()
     sys.exit(0)
 
+
 def check_vm():
     if not os.path.isfile("docker/.panda/vm.qcow2"):
         print("Missing VM, trying to download...")
@@ -60,12 +61,14 @@ def check_vm():
         with open("docker/.panda/vm.qcow2", 'wb') as file:
             file.write(r.content)
 
+
 def does_image_exist():
     try:
         image = docker_client.images.get("panda_pandare")
         return True
     except docker.errors.ImageNotFound:
         return False
+
 
 if __name__ == "__main__":
     signal.signal(signal.SIGINT, signal_handler)

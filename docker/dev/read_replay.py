@@ -1,5 +1,3 @@
-import time
-
 import cffi
 from pandare import Panda, panda_expect
 from utility import EntropyAnalysis, PEInformations, DynamicLoadedDLL, SearchDLL, DLLCallAnalysis, SectionPermissionCheck
@@ -8,7 +6,6 @@ import os
 import sys
 import pickle
 import hashlib
-import signal
 
 ffi = cffi.FFI()
 panda = Panda(qcow='/root/.panda/vm.qcow2', mem="3G", os_version="windows-32-7sp0", extra_args="-nographic -loadvm 1")
@@ -19,7 +16,7 @@ malware_sample = ""
 sample_asid = set()
 sample_pid = set()
 cmd_pid = None
-memory_write_exe_list = {}
+memory_write_exe_list = []
 memory_write_list = {}
 executed_bytes_list = []
 count = 0
@@ -56,7 +53,7 @@ def virt_mem_after_write(env, pc, addr, size, buf):
     if memcheck_activated:
         global memory_write_list
         if panda.current_asid(env) in sample_asid:
-            for i in range(size - 1):
+            for i in range(size):
                 current_addr = addr + i
                 if current_addr not in memory_write_list:
                     memory_write_list[current_addr] = []
@@ -124,14 +121,14 @@ def before_block_exec(env, tb):
                 function_name = ""
                 if pc in pe_infos.imports.values():  # If current addr correspond to a DLL method call addr
                     function_name = pe_infos.get_import_name_from_addr(pc)
-                    if pc in dynamic_dll.dynamic_dll_methods.values():
-                        dynamic_function_name = dynamic_dll.get_dll_method_name_from_addr(pc)
+                    if dynamic_dll.get_dll_from_addr(pc):
+                        dynamic_function_name = dynamic_dll.get_dll_from_addr(pc)
                         if function_name != dynamic_function_name:  # Address of an IAT function modified by the packer
                             dll_analysis.iat_address_modified(function_name, dynamic_function_name)
                     current_position = f"IAT_DLL({function_name})"
                     dll_analysis.increase_call_nbr("iat", function_name)
-                elif pc in dynamic_dll.dynamic_dll_methods.values():
-                    function_name = dynamic_dll.get_dll_method_name_from_addr(pc)
+                elif dynamic_dll.get_dll_from_addr(pc):
+                    function_name = dynamic_dll.get_dll_from_addr(pc)
                     current_position = f"DYNAMIC_DLL({function_name})"
                     dll_analysis.increase_call_nbr("dynamic", function_name)
                 elif pc in discovered_dll.dll.keys():
@@ -175,10 +172,10 @@ def before_block_exec(env, tb):
                 if section_name:
                     if real_ep == -1:
                         real_ep = pc
-                    bytes = panda.virtual_memory_read(env, pc, tb.size)
+                    b = panda.virtual_memory_read(env, pc, tb.size)
                     size = min(tb.size, 64 - len(executed_bytes_list))
                     for i in range(size):
-                        executed_bytes_list.append(bytes[i])
+                        executed_bytes_list.append(b[i])
             else:
                 if is_debug:
                     print(f"(BLOCK_EXEC) DETECTED FIRST BYTES: {[str(hex(elem))[2:] for elem in executed_bytes_list]}", flush=True)
@@ -195,9 +192,7 @@ def before_block_exec(env, tb):
         pc = panda.arch.get_pc(env)
         if pc in memory_write_list and not is_known_dll_addr(pc):
             if pc not in memory_write_exe_list:
-                memory_write_exe_list[pc] = []
-            for addr in memory_write_list[pc]:
-                memory_write_exe_list[pc].append(addr)
+                memory_write_exe_list.append(pc)
             memory_write_list[pc] = []
             if max_memory_write_exe_list_length != 0 and len(memory_write_exe_list) >= max_memory_write_exe_list_length:
                 memcheck_activated = False
@@ -275,7 +270,7 @@ def asid_changed(env, old_asid, new_asid):
 
 
 def is_known_dll_addr(addr):
-    return addr in pe_infos.imports.values() or addr in dynamic_dll.dynamic_dll_methods.values() or addr in discovered_dll.dll.keys()
+    return addr in pe_infos.imports.values() or dynamic_dll.get_dll_from_addr(addr) is not None or addr in discovered_dll.dll.keys()
 
 
 if __name__ == "__main__":
@@ -301,7 +296,7 @@ if __name__ == "__main__":
                           "entropy_unpacked_oep": pe_infos.unpacked_EP_section,
                           "function_inital_iat": list(pe_infos.imports.keys()),
                           "dll_dynamically_loaded_dll": dynamic_dll.loaded_dll,
-                          "dll_GetProcAddress_returns": list(dynamic_dll.dynamic_dll_methods.keys()),
+                          "dll_GetProcAddress_returns": dynamic_dll.get_dlls_name(),
                           "section_perms_changed": section_perms_check.permissions_modifications,
                           "executed_bytes_list": executed_bytes_list,
                           "real_EP": real_ep,
@@ -313,7 +308,9 @@ if __name__ == "__main__":
                           "dll_call_nbrs_malicious": dll_analysis.get_malicious_functions()}
                 with open(f"{malware_hash}_result.pickle", "wb") as f:
                     pickle.dump(result, f, protocol=pickle.HIGHEST_PROTOCOL)
+                sys.exit(0)
         except Exception as e:
             print(e)
+            sys.exit(1)
     else:
         sys.exit(1)

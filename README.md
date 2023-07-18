@@ -2,7 +2,7 @@
 
 PANDI is a ***dynamic packing detection*** solution built on top of PANDA (https://github.com/panda-re/panda), a platform for Architecture-Neutral Dynamic Analysis.
 TODO   
-PANDI is currently developed at UCLouvain (Belgium) and is available under [TODO] license.
+PANDI is currently developed at UCLouvain (Belgium) and is available under MIT license.
 
 ## How to use
 ***First, put the malware(s) that need to be analysed under the folder "payload".***  
@@ -201,7 +201,7 @@ For example with `qemu-utils` on Linux
   * You can add, prior launching the script, some file you will want to launch on the VM. Those files can be put a folder called `new-vm`
   * Now connect to the VM with a VNC viewer (like Remmina) through the IP of the docker container
   * Install the program you want and finish by opening a prompt
-  * Once its done, type `finished` in the console (where you typed `docker-compose -f docker-compose.newvm.yml run pandare`)
+  * Once it's done, type `finished` in the console (where you typed `docker-compose -f docker-compose.newvm.yml run pandare`)
   * The VM is now ready to be used !
   * (If you don't want to save the modification you have done, you can type anything in the console and the snapshot will not be saved)
 * Name the virtual machine as `vm.qcow2` and place the file under the folder `./docker/.panda`

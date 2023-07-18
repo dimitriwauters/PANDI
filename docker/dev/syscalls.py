@@ -2,7 +2,6 @@ class SysCallsInterpreter:
     def __init__(self, panda):
         self.panda = panda
 
-
     def read_syscall(self, env, function_name, parameter_name, addr):
         result = "Unknown"
         try:
@@ -88,7 +87,7 @@ class SysCallsInterpreter:
           [in] LPCSTR  lpProcName
         );
         """
-        hModule_addr = self.panda.arch.get_arg(env, 0, convention='cdecl')
+        # hModule_addr = self.panda.arch.get_arg(env, 0, convention='cdecl')
         lpProcName_addr = self.panda.arch.get_arg(env, 1, convention='cdecl')
         lpProcName_val = "Unknown"
         try:
@@ -122,9 +121,9 @@ class SysCallsInterpreter:
         return self._LoadLibraryA(env)
 
     def _LdrGetProcedureAddress(self, env):
-        hModule_addr = self.panda.arch.get_arg(env, 0, convention='cdecl')
+        # hModule_addr = self.panda.arch.get_arg(env, 0, convention='cdecl')
         FunctionName_addr = self.panda.arch.get_arg(env, 1, convention='cdecl')
-        Oridinal_addr = self.panda.arch.get_arg(env, 2, convention='cdecl')
+        # Oridinal_addr = self.panda.arch.get_arg(env, 2, convention='cdecl')
         FunctionName_val = "Unknown"
         try:
             FunctionName_raw = self.panda.virtual_memory_read(env, FunctionName_addr, 32)

@@ -12,7 +12,7 @@ from threading import Thread, Lock
 from utility import write_debug_file, write_output_file
 
 NUMBER_OF_PARALLEL_EXECUTION = int(os.getenv("panda_max_parallel_execution", default=4))
-MAX_TRIES = 1
+MAX_TRIES = 3
 
 entropy_activated = os.getenv("panda_entropy", default=False) == "True"
 memcheck_activated = os.getenv("panda_memcheck", default=False) == "True"
@@ -68,7 +68,7 @@ class ProcessSample:
             print_info(f"  !! An error occured when processing file '{self.malware_sample_path}/{self.malware_sample}': try {i+1} of {MAX_TRIES}")
         return False
 
-    def __run_subprocess(self, filename, parameters=[], timeout=None):
+    def __run_subprocess(self, filename, parameters=[], to=None):
         if is_debug:
             data_out = subprocess.PIPE
         else:
@@ -77,11 +77,11 @@ class ProcessSample:
         outs, errs = None, None
         try:
             if is_debug:
-                outs, errs = process.communicate(timeout=timeout)
+                outs, errs = process.communicate(timeout=to)
                 write_debug_file(self.malware_sample, filename, outs.decode())
             else:
-                process.wait(timeout=timeout)
-            return False
+                process.wait(timeout=to)
+            return process.returncode != 0
         except subprocess.CalledProcessError as e:
             if is_debug:
                 write_debug_file(self.malware_sample, filename, e.stderr.decode())
@@ -121,12 +121,17 @@ class ProcessSample:
                 self.need_ml = True
             if count_instr_activated:
                 self.count_instr(panda_output_dict)
-            if self.need_ml:
-                self.execute_machine_learning()
+            self.execute_machine_learning()
         else:
             error = True
-        print_info(f"  ** The result of the analysis of {self.malware_sample} is: {'PACKED' if self.is_packed else 'NOT-PACKED'} (Took {self.time_took} seconds to analyse)")
-        write_output_file(self.malware_sample, "time", "time", {"start": self.start_time, "end": self.end_time})
+        if not error:
+            if self.timeout_expired:
+                print_info(f"  ** The result of the analysis of {self.malware_sample} is: {'PACKED' if self.is_packed else 'NOT-PACKED'} (TIMEOUT)")
+            else:
+                print_info(f"  ** The result of the analysis of {self.malware_sample} is: {'PACKED' if self.is_packed else 'NOT-PACKED'} (Took {self.time_took} seconds to analyse)")
+            write_output_file(self.malware_sample, "time", "time", {"start": self.start_time, "end": self.end_time})
+        else:
+            print_info(f"  ** The result of the analysis of {self.malware_sample} is: ERROR DURING ANALYSIS")
         write_output_file(self.malware_sample, "", "result", {"is_packed": self.is_packed,
                                                               "error_during_analysis": error,
                                                               "has_timeout": self.timeout_expired})
@@ -146,12 +151,14 @@ class ProcessSample:
     def memcheck(self, panda_output_dict):
         memory_write_list = panda_output_dict["memory_write_exe_list"]
         if len(memory_write_list) > 0:
-            # TODO: Check if consecutive
-            """count = 0
-            for elem in memory_write_list:
-                addr = elem[1] % 134  # Modulo x86, the length of an instruction
-                print(addr)"""
-            self.is_packed = True
+            count = 0
+            for i in range(len(memory_write_list)):
+                if count >= 10:
+                    self.is_packed = True
+                    break
+                if i + 1 < len(memory_write_list):
+                    if memory_write_list[i+1] - memory_write_list[i] <= 32:
+                        count += 1
         write_output_file(self.malware_sample, "memcheck", "memcheck", {"memory_write_exe_list": memory_write_list,
                                                                         "list_limit": max_memory_write_exe_list_length})
 
@@ -202,11 +209,8 @@ class ProcessSample:
         write_output_file(self.malware_sample, "count_instr", "count_instr", file_dict)
 
     def execute_machine_learning(self):
-        # TODO: Implement
-        pass
-        """subprocess.run(["python3", "create_csv.py", self.malware_sample_path])
-        with open("features.csv", 'r') as f:
-            pass"""
+        if self.need_ml:
+            pass
 
 
 def print_info(text):
@@ -224,7 +228,9 @@ def process_sample(q):
             is_packed = process.get_result()
             with result_lock:
                 result[is_packed].append(process.malware_sample)
-            process.clean()
+        else:
+            process.get_result()
+        process.clean()
         q.task_done()
 
 
@@ -265,11 +271,9 @@ if __name__ == "__main__":
     total_analyzed = len(result[True]) + len(result[False])
     percent_packed, percent_not_packed = 0, 0
     if total_analyzed > 0:
-        percent_packed = len(result[True])/total_analyzed
-        percent_not_packed = len(result[False])/total_analyzed
+        percent_packed = len(result[True])/total_analyzed*100
+        percent_not_packed = len(result[False])/total_analyzed*100
         print_info(f"*** % packed: {percent_packed}\n*** % non-packed: {percent_not_packed}")
-        print_info(f"*** Packed list: {result[True]}")
-        print_info(f"*** Non-Packed list: {result[False]}")
         sys.exit(0)
     else:
         print_info("*** No sample was left to analyse !")

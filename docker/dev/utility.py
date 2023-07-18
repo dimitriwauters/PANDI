@@ -203,19 +203,22 @@ class DynamicLoadedDLL:
                 self.loaded_dll[position].append(sanitized)
 
     def add_dll_method(self, name, addr):
-        if name is None:
-            self.dynamic_dll_methods[''.join(random.choice(string.ascii_lowercase) for i in range(5))] = addr
-        elif name not in self.dynamic_dll_methods:
-            self.dynamic_dll_methods[name] = addr
+        if addr != 0:
+            if name is None:
+                self.dynamic_dll_methods[addr] = ''.join(random.choice(string.ascii_lowercase) for _ in range(5))
+            elif name not in self.dynamic_dll_methods:
+                self.dynamic_dll_methods[addr] = name
 
-    def get_dll_method_name_from_addr(self, addr):
-        try:
-            return list(self.dynamic_dll_methods.keys())[list(self.dynamic_dll_methods.values()).index(addr)]
-        except ValueError:
-            return None
+    def get_dll_from_addr(self, addr):
+        if addr in self.dynamic_dll_methods:
+            return self.dynamic_dll_methods[addr]
+        return None
 
     def iat_address_modified(self, iat_name, dynamic_name):
         self.iat_modified.append((iat_name, dynamic_name))
+
+    def get_dlls_name(self):
+        return list(set(self.dynamic_dll_methods.values()))
 
 
 class DLLCallAnalysis:
@@ -223,8 +226,8 @@ class DLLCallAnalysis:
         self.functions_generic = {"iat": {}, "dynamic": {}, "discovered": {}}
         self.functions_malicious = {"iat": {}, "dynamic": {}, "discovered": {}}
         self.__MALICIOUS_FUNCTIONS = ["getprocaddress", "loadlibrary", "exitprocess", "getmodulehandle", "virtualalloc",
-                                     "virtualfree", "getmodulefilename", "createfile", "regqueryvalueex", "messagebox",
-                                     "getcommandline", "virtualprotect", "getstartupinfo", "getstdhandle", "regopenkeyex"]
+                                      "virtualfree", "getmodulefilename", "createfile", "regqueryvalueex", "messagebox",
+                                      "getcommandline", "virtualprotect", "getstartupinfo", "getstdhandle", "regopenkeyex"]
 
     def __get_list_for_function(self, name):
         if self.is_function_malicious(name):
@@ -281,7 +284,7 @@ class SearchDLL:
                 name = self.panda.ffi.string(mapping.file).decode()
                 if ".dll" in name:
                     dll_name = name.split('\\')[-1]
-                    if not dll_name in self.resolved_dll_ordinal:
+                    if dll_name not in self.resolved_dll_ordinal:
                         self.resolved_dll_ordinal[dll_name] = set()
                     if (specific_dll is None or dll_name == specific_dll) and (dll_name not in self.completed_dll):
                         try:

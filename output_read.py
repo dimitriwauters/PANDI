@@ -106,6 +106,8 @@ if __name__ == "__main__":
                 print("Is Packed ?", d["is_packed"])
                 if "has_timeout" in d:
                     print("Has Timeout ?", d["has_timeout"])
+                if "error_during_analysis" in d:
+                    print("Error during analysis ?", d["error_during_analysis"])
                 print("Available analysis:", ",".join(analysis.directories))
                 for directory in analysis.directories:
                     try:
