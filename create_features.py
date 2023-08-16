@@ -74,9 +74,10 @@ if __name__ == "__main__":
     if len(sys.argv) != 2:
         directory = "output"
     else:
-        directory = sys.argv[1]
+        name = sys.argv[1]
+        directory = "outputs/"+name
     features = create_features()
-    with open("features/features_" + directory + ".csv", "w") as f:
+    with open("features/features_" + name + ".csv", "w") as f:
         f.write(",".join(features.keys()))
         f.write("\n")
     for sample in os.listdir(directory):
@@ -172,6 +173,6 @@ if __name__ == "__main__":
                                  features["stdev_oep_section_entropy"] = statistics.stdev(y)
                                  
          if good and features["number_total_entropy"] != -1:
-             with open("features/features_" + directory + ".csv", "a") as f:
+             with open("features/features_" + name + ".csv", "a") as f:
                  f.write(",".join(str(x) for x in features.values()))
                  f.write("\n")
