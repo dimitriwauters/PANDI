@@ -1,7 +1,6 @@
 import string
 import time
 import sys
-import random
 import hashlib
 
 from pandare import Panda, panda_expect

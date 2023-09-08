@@ -11,6 +11,7 @@ ffi = cffi.FFI()
 panda = Panda(qcow='/root/.panda/vm.qcow2', mem="3G", os_version="windows-32-7sp0", extra_args="-nographic -loadvm 1")
 panda.load_plugin("syscalls2", {"load-info": True})
 
+sample_not_found_counter = 0
 malware_sample_path = ""
 malware_sample = ""
 sample_asid = set()
@@ -258,7 +259,7 @@ def on_all_sys_enter2(env, pc, call, rp):
 
 @panda.cb_asid_changed()
 def asid_changed(env, old_asid, new_asid):
-    global sample_pid, sample_asid
+    global sample_pid, sample_asid, sample_not_found_counter
     if len(sample_asid) == 0 or (old_asid in sample_asid or new_asid in sample_asid):
         current_process = panda.plugins['osi'].get_current_process(env)
         process_name = ffi.string(current_process.name).decode()
@@ -276,6 +277,22 @@ def asid_changed(env, old_asid, new_asid):
                     if section_activated:
                         panda.enable_callback("virt_mem_after_read")
                 panda.enable_callback("before_block_exec")
+        elif len(sample_asid) > 0:
+            processes = panda.get_processes(env)
+            found = False
+            for process in processes:
+                if "sample" in ffi.string(process.name).decode():
+                    found = True
+                    sample_not_found_counter = 0
+                    break
+            if not found:
+                sample_not_found_counter += 1
+                if sample_not_found_counter > 50:
+                    print("SAMPLE NOT FOUND ANYMORE")
+                    try:
+                        panda.end_replay()
+                    except:
+                        pass
     return 0
 
 

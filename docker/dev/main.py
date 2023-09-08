@@ -52,8 +52,8 @@ class ProcessSample:
             with thread_lock:  # Blocking state when running VM, only one VM can run at anytime
                 print_info(f"  -- Starting processing file '{self.malware_sample_path}/{self.malware_sample}'")
                 subprocess.run(["genisoimage", "-max-iso9660-filenames", "-RJ", "-o", "/payload.iso"] + [f"{self.malware_sample_path}/{self.malware_sample}", "/dll"], capture_output=True)
-                has_failed = has_failed + self.__run_subprocess("run_panda", [self.malware_sample])
-            if not has_failed:
+                has_failed = has_failed + self.__run_subprocess("run_panda", [self.malware_sample], to=1800)
+            if not has_failed and not self.timeout_expired:
                 time.sleep(2)
                 if dll_discover_activated:
                     has_failed = has_failed + self.__run_subprocess("discover_dlls", [self.malware_hash])
@@ -65,7 +65,7 @@ class ProcessSample:
                         self.end_time = time.time()
                         self.time_took = self.end_time - self.start_time
                         return True
-            print_info(f"  !! An error occured when processing file '{self.malware_sample_path}/{self.malware_sample}': try {i+1} of {MAX_TRIES}")
+            print_info(f"  !! An error occurred when processing file '{self.malware_sample_path}/{self.malware_sample}': try {i+1} of {MAX_TRIES}")
         return False
 
     def __run_subprocess(self, filename, parameters=[], to=None):
@@ -224,12 +224,15 @@ def process_sample(q):
         if sample_path is None:
             break
         process = ProcessSample(sample_path)
-        if process.launch():
-            is_packed = process.get_result()
-            with result_lock:
-                result[is_packed].append(process.malware_sample)
-        else:
-            process.get_result()
+        try:
+            if process.launch():
+                is_packed = process.get_result()
+                with result_lock:
+                    result[is_packed].append(process.malware_sample)
+            else:
+                process.get_result()
+        except Exception as e:
+            print(e)
         process.clean()
         q.task_done()
 
