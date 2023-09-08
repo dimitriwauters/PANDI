@@ -1,7 +1,6 @@
 # PANDI
 
-PANDI is a ***dynamic packing detection*** solution built on top of PANDA (https://github.com/panda-re/panda), a platform for Architecture-Neutral Dynamic Analysis.
-TODO   
+PANDI is a ***dynamic packing detection*** solution built on top of PANDA (https://github.com/panda-re/panda), a platform for Architecture-Neutral Dynamic Analysis. 
 PANDI is currently developed at UCLouvain (Belgium) and is available under MIT license.
 
 ## How to use
@@ -59,8 +58,8 @@ Once the virtual machine is downloaded, the process can be launched as any docke
 
 ### Importing additional DLLs
 There is the possibility to add new DLL that are not present in the virtual machine.
-This might be interesting in the case of a sample that need a specific DLL that is not standard.   
-To add these DLLs to the virtual machine, you can simply put them in the `additional-dll` folder and they will be loaded
+This might be useful in the case of a sample that need a specific DLL that is not standard.   
+To add these DLLs to the virtual machine, you can simply put them in the `additional-dll` folder, and they will be loaded
 in parallel to the sample.
 
 ## Usage
@@ -92,7 +91,7 @@ data. The default value of this parameter is a length of 1000.
 > This option will need the help of machine learning to give the result.
 
 The entropy analysis will gather the entropy of each of the program section at every execution of a basic block
-(with a defined granularity). These entropy points will then be used to construct some statistics to determine, with the
+(with a defined granularity). These entropy points will then be used to compute statistics to determine, with the
 help of some machine learning, if the analysed software is packed or not.   
 The entry point of the software and the entry point of the unpacked software (if any) will be also used to extract statistics.
 
@@ -121,7 +120,7 @@ is packed or not.
 ### Automatic DLL Discovery
 >This option must be activated with the `--dll_discovery` parameter on `launch.py` or by modifying the `docker-compose.yml` file by adding `panda_dll_discovery=True` in the environment variables.
 
-This option is usefull in the cas of a corrupted/missing/stripped IAT (Import Address Table).
+This option is useful in the cas of a corrupted/missing/stripped IAT (Import Address Table).
 It will parse the DLLs loaded in memory by the sample to analyse and parse it to discover the exported function of these loaded DLL.
 Meaning that we will not need anymore to parse the IAT to recover the addresses of each function that will be called by the sample,
 we will know them before the execution of the sample.
@@ -159,23 +158,24 @@ that the sample may perform an unpacking procedure.
 >This option must be activated with the `--first_bytes` parameter on `launch.py` or by modifying the `docker-compose.yml` file by adding `panda_first_bytes=True` in the environment variables.   
 > This option will need the help of machine learning to give the result.
 
-TODO
+This option extract the first 64 bytes executed by the sample. This is not necessarily the bytes located at the address
+pointer by the entry point in the header of the PE, as this can be evaded. For example, with TLS (Thread Local Storage)
+callbacks, a malware can execute some code before executing the code pointed by the entry point. This can be used by some
+malware to evade debugging.
+
+This option detect the real first bytes executed by the sample and allow to detect this kind of escaping behavior.
 
 ## Output (results)
 An output directory containing the data collected under the name `ouput` is created when the analysis ends. This directory
-contains a subfolder for each sample analysed, with the name of the sample as the name of the subfolder.   
+contains a sub-folder for each sample analysed, with the name of the sample as the name of the sub-folder.   
 These results can be read easily as they are packed with the python module `pickle` but a script is provided for convenience.
 This script is called `output_read.py` and take the name of the sample you want to analyse in parameter. It will then
 print the result collected by each activated option during the analysis.
 
-## Evaluation - Examples
-TODO
-
 ## Improvements
-TODO
 
 ### Exact Unpacked Entry-Point Detection
-Currently, the entry-point of the unpacked program is detected but this detection is not precise.
+Currently, the entry-point of the unpacked program is detected (if only packed once) but this detection is not precise.
 As not every instruction is observed to reduce the process time, the exact entry-point can happen between two lookups.
 This means that the analysis will detect an approximation of the entry-point (for example 1000 instructions later) but not the exact one.
 
