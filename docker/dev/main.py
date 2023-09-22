@@ -12,7 +12,7 @@ from threading import Thread, Lock
 from utility import write_debug_file, write_output_file
 
 NUMBER_OF_PARALLEL_EXECUTION = int(os.getenv("panda_max_parallel_execution", default=4))
-MAX_TRIES = 3
+MAX_TRIES = 1
 
 entropy_activated = os.getenv("panda_entropy", default=False) == "True"
 memcheck_activated = os.getenv("panda_memcheck", default=False) == "True"
@@ -52,7 +52,7 @@ class ProcessSample:
             with thread_lock:  # Blocking state when running VM, only one VM can run at anytime
                 print_info(f"  -- Starting processing file '{self.malware_sample_path}/{self.malware_sample}'")
                 subprocess.run(["genisoimage", "-max-iso9660-filenames", "-RJ", "-o", "/payload.iso"] + [f"{self.malware_sample_path}/{self.malware_sample}", "/dll"], capture_output=True)
-                has_failed = has_failed + self.__run_subprocess("run_panda", [self.malware_sample], to=1800)
+                has_failed = has_failed + self.__run_subprocess("run_panda", [self.malware_sample], to=600)
             if not has_failed and not self.timeout_expired:
                 time.sleep(2)
                 if dll_discover_activated:
@@ -186,13 +186,12 @@ class ProcessSample:
             write_output_file(self.malware_sample, "entropy", header_name, file_dict)
 
     def dll(self, panda_output_dict):
-        file_dict = {"initial_iat": panda_output_dict["dll_initial_iat"],
-                     "iat_addr_modified": panda_output_dict["dll_addr_iat_modified"],
-                     "dynamically_loaded_dll": panda_output_dict["dll_dynamically_loaded_dll"],
-                     "call_nbrs_generic": panda_output_dict["dll_call_nbrs_generic"],
-                     "call_nbrs_malicious": panda_output_dict["dll_call_nbrs_malicious"],
-                     "GetProcAddress_functions": panda_output_dict["dll_GetProcAddress_returns"],
-                     "function_inital_iat": panda_output_dict["function_inital_iat"]}
+        file_dict = {"initial_iat": panda_output_dict["initial_iat"],
+                     "initial_dll": panda_output_dict["initial_dll"],
+                     "LoadLibrary": panda_output_dict["LoadLibrary"],
+                     "GetProcAddress": panda_output_dict["GetProcAddress"],
+                     "modified_iat": panda_output_dict["modified_iat"],
+                     "calls": panda_output_dict["calls"]}
         write_output_file(self.malware_sample, "syscalls", "syscalls", file_dict)
 
     def sections(self, panda_output_dict):

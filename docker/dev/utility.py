@@ -18,6 +18,7 @@ class PEInformations:
         self.optional_header_size = 0x0
         self.headers = {}  # {"UPX0": (0x401000, 0x401000), ...}
         self.headers_perms = {"OPTIONAL_HEADER": {"uninitialized_data": False, "execute": False, "read": True, "write": False}}
+        self.ILT = {}
         self.imports = {}
         self.higher_section_addr = None
         self.initial_EP = None
@@ -59,30 +60,28 @@ class PEInformations:
                         if self.debugging_activated:
                             print(entry.dll, entry.struct.FirstThunk + headers[0], entry.__dict__, flush=True)
                         for imp in entry.imports:
+                            addr = self.image_base - self.pe.OPTIONAL_HEADER.ImageBase + imp.address
                             if imp.name is not None:
-                                self.imports[imp.name.decode()] = imp.address
+                                self.ILT[imp.name.decode()] = addr
                             if self.debugging_activated:
-                                print("\t", imp.name, imp.address, hex(imp.address), flush=True)
+                                print("\t", imp.name, addr, hex(addr), flush=True)
                             callback_iat(entry.dll.decode())
                 else:  # IAT is stripped
                     pass  # TODO: IMPLEMENT
-                """for exp in pe.DIRECTORY_ENTRY_EXPORT.symbols:
-                    print(hex(pe.OPTIONAL_HEADER.ImageBase + exp.address), exp.name, exp.ordinal, flush=True)"""
         except ValueError as e:
             print(e)
 
     def update_imports_addr(self, cpu):
-        for import_name in self.imports:
-            if self.imports[import_name] < self.get_higher_section_addr():
-                try:
-                    a = self.panda.virtual_memory_read(cpu, self.imports[import_name], 4)
-                    to_hex = int(a[::-1].hex(), base=16)
-                    if to_hex > self.imports[import_name]:
-                        if self.debugging_activated:
-                            print(f"(IAT_IMPORT) CHANGED IMPORT {import_name}: {hex(self.imports[import_name])} -> {hex(to_hex)}")
-                        self.imports[import_name] = to_hex
-                except ValueError:
-                    pass
+        for import_name in self.ILT:
+            try:
+                a = self.panda.virtual_memory_read(cpu, self.ILT[import_name], 4)
+                to_hex = int(a[::-1].hex(), base=16)
+                if import_name not in self.imports or to_hex != self.imports[import_name]:
+                    self.imports[import_name] = to_hex
+                    if self.debugging_activated:
+                        print(f"(IAT_IMPORT) CHANGED IMPORT {import_name}: {hex(self.imports[import_name])} -> {hex(to_hex)}")
+            except ValueError:
+                pass
 
     def get_section_from_addr(self, addr):
         if self.image_base <= addr <= self.image_base + self.optional_header_size:
@@ -225,6 +224,7 @@ class DLLCallAnalysis:
     def __init__(self):
         self.functions_generic = {"iat": {}, "dynamic": {}, "discovered": {}}
         self.functions_malicious = {"iat": {}, "dynamic": {}, "discovered": {}}
+        self.function_calls = {"iat": {}, "dynamic": {}, "discovered": {},"internal": {}}
         self.__MALICIOUS_FUNCTIONS = ["getprocaddress", "loadlibrary", "exitprocess", "getmodulehandle", "virtualalloc",
                                       "virtualfree", "getmodulefilename", "createfile", "regqueryvalueex", "messagebox",
                                       "getcommandline", "virtualprotect", "getstartupinfo", "getstdhandle", "regopenkeyex"]
@@ -238,12 +238,18 @@ class DLLCallAnalysis:
     def is_function_malicious(self, name):
         return name.lower() in self.__MALICIOUS_FUNCTIONS
 
-    def increase_call_nbr(self, source, name):
+    def increase_call_nbr_old(self, source, name):
         list_to_use = self.__get_list_for_function(name)
         if name not in list_to_use[source]:
             list_to_use[source][name] = 1
         else:
             list_to_use[source][name] += 1
+            
+    def increase_call_nbr(self, source, name):
+        if name not in self.function_calls[source]:
+            self.function_calls[source][name] = 1
+        else:
+            self.function_calls[source][name] += 1
 
     def get_nbr_calls(self, name, source=None):
         list_to_use = self.__get_list_for_function(name)
@@ -264,6 +270,9 @@ class DLLCallAnalysis:
 
     def get_generic_functions(self):
         return self.functions_generic
+        
+    def get_function_calls(self):
+        return self.function_calls
 
 class SearchDLL:
     def __init__(self, panda):
@@ -290,16 +299,19 @@ class SearchDLL:
                         try:
                             new_exe_addr = int(self.panda.virtual_memory_read(env, mapping.base + self._DOS_HEADER_NEXT_PTR, 4)[::-1].hex(), base=16) + 0x4
                             export_table_offset = int(self.panda.virtual_memory_read(env, mapping.base + new_exe_addr + self._SIZE_OF_FILEHEADER + 0x60, 4)[::-1].hex(), base=16)
-                            nbr_exported_fct = int(self.panda.virtual_memory_read(env, mapping.base + export_table_offset + 0x14, 4)[::-1].hex(), base=16)
+                            nbr_exported_names = int(self.panda.virtual_memory_read(env, mapping.base + export_table_offset + 0x18, 4)[::-1].hex(), base=16)
                             base_addr_exported_fct_name = int(self.panda.virtual_memory_read(env, mapping.base + export_table_offset + 0x20, 4)[::-1].hex(), base=16)
-                            for i in range(nbr_exported_fct):
-                                if i not in self.resolved_dll_ordinal[dll_name]:
+                            ordinal_table = int(self.panda.virtual_memory_read(env, mapping.base + export_table_offset + 0x24, 4)[::-1].hex(), base=16)
+                            base_addr_exported_fct = int(self.panda.virtual_memory_read(env, mapping.base + export_table_offset + 0x1c, 4)[::-1].hex(), base=16)
+                            for i in range(nbr_exported_names):
+                              ordinal = int(self.panda.virtual_memory_read(env, mapping.base + ordinal_table + i * 0x2, 2)[::-1].hex(), base=16)
+                              if (ordinal+1) not in self.resolved_dll_ordinal[dll_name]:
                                     try:
                                         fct_name_addr = int(self.panda.virtual_memory_read(env, mapping.base + base_addr_exported_fct_name + i * 0x4, 4)[::-1].hex(), base=16)
                                         fct_name = self.panda.virtual_memory_read(env, mapping.base + fct_name_addr, 32).split(b'\x00')[0].decode()
-                                        self.resolved_dll_ordinal[dll_name].add(i)
+                                        self.resolved_dll_ordinal[dll_name].add(ordinal+1)
                                         if specific_function is None or fct_name == specific_function:
-                                            function_rva = int(self.panda.virtual_memory_read(env, mapping.base + export_table_offset + 0x2c + i * 0x4, 4)[::-1].hex(), base=16)
+                                            function_rva = int(self.panda.virtual_memory_read(env, mapping.base + base_addr_exported_fct + ordinal * 0x4, 4)[::-1].hex(), base=16)
                                             if (mapping.base + function_rva) not in self.dll:
                                                 self.dll[mapping.base + function_rva] = f"{fct_name}-{dll_name}"
                                                 found = True

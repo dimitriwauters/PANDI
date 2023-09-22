@@ -74,12 +74,29 @@ class Analysis:
     def analyse_syscalls(self):
         with open(f"{OUTPUT_PATH}/{self.sample_name}/syscalls/syscalls.pickle", 'rb') as file:
             data = pickle.load(file)
-            print("Initial DLL in IAT:\n", ", ".join(data["initial_iat"]))
-            print("Initial functions in IAT:\n", ", ".join(data["function_inital_iat"]))
-            print("Dynamically loaded DLL:\n", data["dynamically_loaded_dll"])
-            print("Functions discovered with GetProcAddress:\n", ", ".join(data["GetProcAddress_functions"]))
-            print("Nbr call of genuine functions:\n", data["call_nbrs_generic"])
-            print("Nbr call of malicious functions:\n", data["call_nbrs_malicious"])
+            try:
+             print("\nInitial DLLs:\n", ", ".join(data["initial_dll"]))
+             print("\nInitial IAT:\n", ", ".join(data["initial_iat"]))
+             print("\nDLLs imported with LoadLibrary:\n", data["LoadLibrary"])
+             print("\nFunctions discovered with GetProcAddress:\n", data["GetProcAddress"])
+             print("\nModifications in IAT:\n", data["modified_iat"])
+             print("\nCalls from the initial IAT:\n", data["calls"]["iat"])
+             print("\nCalls from GetProcAddress:\n", data["calls"]["dynamic"])
+             print("\nCalls discovered:\n", data["calls"]["discovered"])
+             print("\nInternal calls:\n", data["calls"]["internal"])
+            except:
+             print("Initial DLL in IAT:\n", ", ".join(data["initial_iat"]))
+             print("Initial functions in IAT:\n", ", ".join(data["function_inital_iat"]))
+             print("Dynamically loaded DLL:\n", data["dynamically_loaded_dll"])
+             print("Functions discovered with GetProcAddress:\n", ", ".join(data["GetProcAddress_functions"]))
+             print("Nbr call of genuine functions:\n", data["call_nbrs_generic"])
+             print("Nbr call of malicious functions:\n", data["call_nbrs_malicious"])
+             print("Modifications in IAT:\n", data["iat_addr_modified"])
+                
+    def analyse_syscalls2(self):
+        with open(f"{OUTPUT_PATH}/{self.sample_name}/syscalls/syscalls.pickle", 'rb') as file:
+            data = pickle.load(file)
+            
 
     def analyse_first_bytes(self):
         with open(f"{OUTPUT_PATH}/{self.sample_name}/first_bytes/first_bytes.pickle", 'rb') as file:
@@ -94,6 +111,16 @@ class Analysis:
             data = pickle.load(file)
             time_took = data["end"] - data["start"]
             print("Time took:", time_took, "seconds")
+    def analyse_count_instr(self):
+        with open(f"{OUTPUT_PATH}/{self.sample_name}/count_instr/count_instr.pickle", 'rb') as file:
+            data = pickle.load(file)
+            try:
+                print("total number of instructions executed:  " +str(data["count"][0]))
+                print("total number of blocks executed:  " +str(data["count"][1]))
+                print("number of instructions executed in sample:  " +str(data["count"][2]))
+                print("number of blocks executed in sample:  " +str(data["count"][3]))
+            except:
+                print("number of instructions executed:  " +str(data["count"]))
 
 
 if __name__ == "__main__":
@@ -111,7 +138,8 @@ if __name__ == "__main__":
                 print("Available analysis:", ",".join(analysis.directories))
                 for directory in analysis.directories:
                     try:
-                        print(directory.upper(), "================================================================")
+                        print("\n\n================================================================\n",
+                        directory.upper(), "\n================================================================")
                         getattr(analysis, f"analyse_{directory}")()
                     except AttributeError as e:
                         print(f"An error occured when trying to print '{directory}':\n{e}")

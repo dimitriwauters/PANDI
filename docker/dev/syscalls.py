@@ -91,8 +91,11 @@ class SysCallsInterpreter:
         lpProcName_addr = self.panda.arch.get_arg(env, 1, convention='cdecl')
         lpProcName_val = "Unknown"
         try:
-            lpProcName_raw = self.panda.virtual_memory_read(env, lpProcName_addr, 32)
-            lpProcName_val = lpProcName_raw[:lpProcName_raw.find(b'\x00')].decode()
+            if lpProcName_addr >> 16 == 0:
+                lpProcName_val = "Ordinal_"+str(lpProcName_addr)
+            else:
+                lpProcName_raw = self.panda.virtual_memory_read(env, lpProcName_addr, 32)
+                lpProcName_val = lpProcName_raw[:lpProcName_raw.find(b'\x00')].decode()
         except ValueError:
             pass
         func_addr = self.panda.arch.get_retval(env, convention="syscall")
