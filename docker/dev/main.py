@@ -10,6 +10,7 @@ import hashlib
 from queue import Queue
 from threading import Thread, Lock
 from utility import write_debug_file, write_output_file
+from prediction import classify
 
 NUMBER_OF_PARALLEL_EXECUTION = int(os.getenv("panda_max_parallel_execution", default=4))
 MAX_TRIES = 1
@@ -26,6 +27,7 @@ is_silent = os.getenv("panda_silent", default=False) == "True"
 is_debug = os.getenv("panda_debug", default=False) == "True"
 force_executable = os.getenv("panda_executable", default=None)
 timeout = int(os.getenv("panda_timeout", default=7200))
+
 if timeout == 0:
     timeout = None
 if force_executable == "None":
@@ -34,7 +36,6 @@ if force_executable == "None":
 result = {True: [], False: []}
 thread_lock = Lock()
 result_lock = Lock()
-
 
 class ProcessSample:
     def __init__(self, sample_path):
@@ -121,7 +122,8 @@ class ProcessSample:
                 self.need_ml = True
             if count_instr_activated:
                 self.count_instr(panda_output_dict)
-            self.execute_machine_learning()
+            if first_bytes_activated and dll_activated and entropy_activated:
+                self.execute_machine_learning()
         else:
             error = True
         if not error:
@@ -208,8 +210,9 @@ class ProcessSample:
         write_output_file(self.malware_sample, "count_instr", "count_instr", file_dict)
 
     def execute_machine_learning(self):
-        if self.need_ml:
-            pass
+        self.is_packed = classify(self.malware_sample)
+        print("self.malware_sample",self.malware_sample)
+        print("self.is_packed",self.is_packed)
 
 
 def print_info(text):

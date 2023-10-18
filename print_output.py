@@ -136,12 +136,12 @@ if __name__ == "__main__":
                 if "error_during_analysis" in d:
                     print("Error during analysis ?", d["error_during_analysis"])
                 print("Available analysis:", ",".join(analysis.directories))
-                for directory in analysis.directories:
-                    try:
-                        print("\n\n================================================================\n",
-                        directory.upper(), "\n================================================================")
-                        getattr(analysis, f"analyse_{directory}")()
-                    except AttributeError as e:
-                        print(f"An error occured when trying to print '{directory}':\n{e}")
+            for directory in analysis.directories:
+                try:
+                    print("\n\n================================================================\n",
+                    directory.upper(), "\n================================================================")
+                    getattr(analysis, f"analyse_{directory}")()
+                except AttributeError as e:
+                    print(f"An error occured when trying to print '{directory}':\n{e}")
     else:
         print("You have to put in parameter the name of the process you want to analyse the output")

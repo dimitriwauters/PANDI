@@ -79,7 +79,7 @@ class PEInformations:
                 if import_name not in self.imports or to_hex != self.imports[import_name]:
                     self.imports[import_name] = to_hex
                     if self.debugging_activated:
-                        print(f"(IAT_IMPORT) CHANGED IMPORT {import_name}: {hex(self.imports[import_name])} -> {hex(to_hex)}")
+                        print(f"(IAT_IMPORT) CHANGED IMPORT {import_name}: {hex(self.imports[import_name])}")
             except ValueError:
                 pass
 
@@ -184,7 +184,7 @@ class DynamicLoadedDLL:
         self.panda = panda
         self.pe_info = pe_info
         self.iat_dll = []
-        self.loaded_dll = {"before": [], "after": []}
+        self.loaded_dll = {}
         self.dynamic_dll_methods = {}
         self.iat_modified = []
 
@@ -193,31 +193,29 @@ class DynamicLoadedDLL:
         if dll_name not in self.iat_dll:
             self.iat_dll.append(dll_name)
 
-    def add_dll(self, dll_name):
-        dll_name = dll_name.lower()
-        if ".dll" in dll_name:
-            sanitized = dll_name.split(".dll")[0] + ".dll"
-            position = "before" if self.pe_info.unpacked_EP_section[0] == '' else "after"
-            if not sanitized in self.loaded_dll[position] and not sanitized in self.iat_dll:
-                self.loaded_dll[position].append(sanitized)
-
-    def add_dll_method(self, name, addr):
+    def add_dll(self, name, addr):
+        name = name.lower()
+        sanitized = name.split(".dll")[0] + ".dll"
+        self.loaded_dll[addr] = sanitized
+            
+    def add_dll_method(self, name, addr, asid):
         if addr != 0:
-            if name is None:
-                self.dynamic_dll_methods[addr] = ''.join(random.choice(string.ascii_lowercase) for _ in range(5))
-            elif name not in self.dynamic_dll_methods:
-                self.dynamic_dll_methods[addr] = name
+            if asid not in self.dynamic_dll_methods:
+                self.dynamic_dll_methods[asid] = {}
+                self.dynamic_dll_methods[asid][addr] = name
+            elif name not in self.dynamic_dll_methods[asid]:
+                self.dynamic_dll_methods[asid][addr] = name
 
-    def get_dll_from_addr(self, addr):
-        if addr in self.dynamic_dll_methods:
-            return self.dynamic_dll_methods[addr]
+    def get_dll_from_addr(self, addr, asid):
+        if asid in self.dynamic_dll_methods and addr in self.dynamic_dll_methods[asid]:
+            return self.dynamic_dll_methods[asid][addr]
         return None
 
     def iat_address_modified(self, iat_name, dynamic_name):
         self.iat_modified.append((iat_name, dynamic_name))
 
     def get_dlls_name(self):
-        return list(set(self.dynamic_dll_methods.values()))
+        return list(set([s for asid in self.dynamic_dll_methods for s in self.dynamic_dll_methods[asid].values()]))
 
 
 class DLLCallAnalysis:

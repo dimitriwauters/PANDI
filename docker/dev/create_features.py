@@ -16,8 +16,11 @@ class Features:
     @staticmethod
     def _generate_features_structure():
         features = {"name": "",
-                    "write_execute_size": -1,
+                    #"write_execute_size": -1,
 
+                    #"number_add_exec_permission": -1,
+                    #"number_add_write_permisison": -1,
+                    
                     "number_total_entropy": -1,
                     "max_total_entropy": -1.0,
                     "min_total_entropy": -1.0,
@@ -36,28 +39,26 @@ class Features:
                     "variance_oep_section_entropy": -1.0,
                     "stdev_oep_section_entropy": -1.0,
 
-                    "initial_iat_dll": -1,
-                    "initial_iat_func": -1,
-                    "initial_iat_malicious_func": 0,
+                    #"initial_iat_dll": -1,
+                    #"initial_iat_func": -1,
+                    #"initial_iat_malicious_func": -1,
 
                     "reconstructed_iat_dll": -1,
                     "reconstructed_iat_func": -1,
                     "reconstructed_iat_malicious_func": 0,
 
                     "initial_iat_called_generic_func": -1,
-                    "initial_iat_called_malicious_func": -1,
+                    "initial_iat_called_malicious_func": 0,
                     "initial_iat_called_all_func": -1,
 
                     "dynamic_called_generic_func": -1,
-                    "dynamic_called_malicious_func": -1,
+                    "dynamic_called_malicious_func": 0,
                     "dynamic_called_all_func": -1,
 
                     "discovered_called_generic_func": -1,
-                    "discovered_called_malicious_func": -1,
-                    "discovered_called_all_func": -1,
+                    "discovered_called_malicious_func": 0,
+                    "discovered_called_all_func": -1}
 
-                    "number_add_exec_permission": -1,
-                    "number_add_write_permisison": -1}
         for i in range(64):
             features[f"executed_byte_{i}"] = -1
 
@@ -66,12 +67,12 @@ class Features:
 
         return features
 
-    def _handle_memcheck(self, s, f):
+    def _handle_memcheck_old(self, s, f): #not used for the classification
         result = read_file(f"{self.output_path}/{s}/memcheck/memcheck.pickle")
         f["write_execute_size"] = len(result["memory_write_exe_list"])
         return True
 
-    def _handle_sections_perms(self, s, f):
+    def _handle_sections_perms_old(self, s, f): #not used for the classification
         result = read_file(f"{self.output_path}/{s}/sections_perms/sections_perms.pickle")
         permissions = result["section_perms_changed"]
         if len(permissions) > 1:
@@ -88,40 +89,34 @@ class Features:
         result = read_file(f"{self.output_path}/{s}/first_bytes/first_bytes.pickle")
         for i in range(len(result["executed_bytes_list"])):
             f[f"executed_byte_{i}"] = result["executed_bytes_list"][i]
-        return len(result["executed_bytes_list"]) > 0
 
     def _handle_syscalls(self, s, f):
         result = read_file(f"{self.output_path}/{s}/syscalls/syscalls.pickle")
-        f["initial_iat_dll"] = len(result["initial_iat"])
-        f["initial_iat_func"] = len(result["function_inital_iat"])
 
-        f["reconstructed_iat_dll"] = len(result["dynamically_loaded_dll"]["before"]) + len(result["dynamically_loaded_dll"]["after"])
-        f["reconstructed_iat_func"] = len(result["GetProcAddress_functions"])
-
-        f["initial_iat_called_generic_func"] = len(result["call_nbrs_generic"]["iat"])
-        f["initial_iat_called_malicious_func"] = len(result["call_nbrs_malicious"]["iat"])
-        f["initial_iat_called_all_func"] = len(result["call_nbrs_generic"]["iat"]) + len(result["call_nbrs_malicious"]["iat"])
-
-        f["dynamic_called_generic_func"] = len(result["call_nbrs_generic"]["dynamic"])
-        f["dynamic_called_malicious_func"] = len(result["call_nbrs_malicious"]["dynamic"])
-        f["dynamic_called_all_func"] = len(result["call_nbrs_generic"]["dynamic"]) + len(result["call_nbrs_malicious"]["dynamic"])
-
-        f["discovered_called_generic_func"] = len(result["call_nbrs_generic"]["discovered"])
-        f["discovered_called_malicious_func"] = len(result["call_nbrs_malicious"]["discovered"])
-        f["discovered_called_all_func"] = len(result["call_nbrs_generic"]["discovered"]) + len(result["call_nbrs_malicious"]["discovered"])
-
+        f["reconstructed_iat_dll"] = len(result["LoadLibrary"])
+        f["reconstructed_iat_func"] = len(result["GetProcAddress"])
+        
+        f["initial_iat_called_all_func"] = len(result["calls"]["iat"])
+        f["dynamic_called_all_func"] = len(result["calls"]["dynamic"])
+        f["discovered_called_all_func"] = len(result["calls"]["discovered"])
+        
         for fun in MALICIOUS_FUNCTIONS:
-            if fun in result["function_inital_iat"]:
-                f["initial_iat_malicious_func"] += 1
-            if fun in result["GetProcAddress_functions"]:
+            if fun in result["GetProcAddress"]:
                 f["reconstructed_iat_malicious_func"] += 1
-            if fun in result["call_nbrs_malicious"]["iat"]:
-                f[fun] += result["call_nbrs_malicious"]["iat"][fun]
-            if fun in result["call_nbrs_malicious"]["dynamic"]:
-                f[fun] += result["call_nbrs_malicious"]["dynamic"][fun]
-            if fun in result["call_nbrs_malicious"]["discovered"]:
-                f[fun] += result["call_nbrs_malicious"]["discovered"][fun]
-
+            if fun in result["calls"]["iat"]:
+                f["initial_iat_called_malicious_func"] += 1
+                f[fun] += result["calls"]["iat"][fun]
+            if fun in result["calls"]["dynamic"]:
+                f["dynamic_called_malicious_func"] += 1
+                f[fun] += result["calls"]["dynamic"][fun]
+            if fun in result["calls"]["discovered"]:
+                f["discovered_called_malicious_func"] += 1
+                f[fun] += result["calls"]["discovered"][fun]
+                
+        f["initial_iat_called_generic_func"] = f["initial_iat_called_all_func"] - f["initial_iat_called_malicious_func"]
+        f["dynamic_called_generic_func"] = f["dynamic_called_all_func"] - f["dynamic_called_malicious_func"]
+        f["discovered_called_generic_func"] = f["discovered_called_all_func"] - f["discovered_called_malicious_func"]
+        
     def _handle_entropy(self, s, f):
         sections = [item for item in os.listdir(f"{self.output_path}/{s}/entropy") if os.path.isfile(os.path.join(f"{self.output_path}/{s}/entropy", item))]
         for section in sections:
@@ -149,16 +144,21 @@ class Features:
                     f["median_total_entropy"] = statistics.median(y)
                     f["variance_total_entropy"] = statistics.variance(y)
                     f["stdev_total_entropy"] = statistics.stdev(y)
-
-    def _generate_values(self):
+            
+    def generate_features(self, sample):
+        sample = sample.split(".")[0]
+        features = self._generate_features_structure()
+        features["name"] = sample
+        options = [item for item in os.listdir(f"{self.output_path}/{sample}") if os.path.isdir(os.path.join(f"{self.output_path}/{sample}", item))]
+        for option in options:
+            if option in ["entropy","syscalls","first_bytes"]:
+                getattr(self, f"_handle_{option}")(sample, features)
+        return features
+        
+    def generate_values(self):
         samples = [item for item in os.listdir(self.output_path) if os.path.isdir(os.path.join(self.output_path, item))]
         for sample in samples:
-            features = self._generate_features_structure()
-            features["name"] = sample
-            options = [item for item in os.listdir(f"{self.output_path}/{sample}") if os.path.isdir(os.path.join(f"{self.output_path}/{sample}", item))]
-            for option in options:
-                if not getattr(self, f"_handle_{option}")(sample, features):
-                    continue
+            features = self.generate_features(sample)
             self.features_struct.append(features)
 
     def generate_csv(self):
@@ -187,4 +187,6 @@ if __name__ == "__main__":
         directory = "./output"
     else:
         directory = sys.argv[1]
-    Features(directory).generate_csv()
+    print(Features(directory).generate_features("enfal.exe"))
+    
+    

@@ -14,18 +14,22 @@ panda.load_plugin("syscalls2", {"load-info": True})
 sample_not_found_counter = 0
 malware_sample_path = ""
 malware_sample = ""
-sample_asid = set()
+sample_asid = {}
 sample_pid = set()
-cmd_pid = None
+processes = {}
 memory_write_exe_list = []
 memory_write_list = {}
 executed_bytes_list = []
 count = [0,0,0,0]
 real_ep = -1
-ret_addr = 0
-func_name = ""
 pc = 0
 old_pc = 0
+original_asid = 0
+GetProcAddress_ret_addr = 0
+GetProcAddress_func_name = ""
+LoadLibrary_ret_addr = 0
+LoadLibrary_func_name = ""
+
 
 force_complete_replay = os.getenv("panda_force_complete_replay", default=False) == "True"
 max_memory_write_exe_list_length = int(os.getenv("panda_max_memory_write_exe_list_length", default=1000))
@@ -41,16 +45,14 @@ first_bytes_activated = os.getenv("panda_first_bytes", default=False) == "True"
 count_instr_activated = os.getenv("panda_count_instr", default=False) == "True"
 
 block_num = entropy_granularity
-entropy_analysis = None
-syscall_interpreter = SysCallsInterpreter(panda)
-last_section_executed = None
-
-section_perms_check = None
 dll_analysis = DLLCallAnalysis()
+syscall_interpreter = SysCallsInterpreter(panda)
+entropy_analysis = None
+last_section_executed = None
+section_perms_check = None
 dynamic_dll = None
 pe_infos = None
 discovered_dll = None
-
 
 @panda.cb_virt_mem_after_write(enabled=False)
 def virt_mem_after_write(env, pc, addr, size, buf):
@@ -85,7 +87,9 @@ def virt_mem_after_read(env, pc, addr, size, buf):
 
 @panda.cb_before_block_exec(enabled=False)
 def before_block_exec(env, tb):
-    global entropy_activated, memcheck_activated, dll_activated, last_section_executed, section_perms_check, first_bytes_activated, count_instr_activated, ret_addr, func_name, pc, old_pc
+    global entropy_activated, memcheck_activated, dll_activated, first_bytes_activated, count_instr_activated
+    global last_section_executed, section_perms_check, pc, old_pc, original_asid
+    global GetProcAddress_ret_addr, GetProcAddress_func_name, LoadLibrary_ret_addr, LoadLibrary_func_name, GetModuleHandle_ret_addr,GetModuleHandle_func_name
     if not panda.in_kernel(env) and panda.current_asid(env) in sample_asid:
         current_position = "Unknown"
         old_pc = pc
@@ -99,10 +103,11 @@ def before_block_exec(env, tb):
                         if mapping.base > 0x10000000:
                             print("SAMPLE_BASE IS TOO HIGH   " + str(mapping.base))
                         sample_base = mapping.base
+                        original_asid = panda.current_asid(env)
             if sample_base:
                 pe_infos.init_headers(sample_base, entropy_analysis.initial_entropy, dynamic_dll.initial_iat)
                 section_perms_check = SectionPermissionCheck(pe_infos.headers_perms)
-        else:
+        elif panda.current_asid(env) == original_asid:
             pe_infos.update_imports_addr(env)
         current_section = pe_infos.get_section_from_addr(pc)
         # Update entry point of unpacked code
@@ -124,47 +129,45 @@ def before_block_exec(env, tb):
                 if not last_perms["execute"]:
                     section_perms_check.add_section_permission(env.rr_guest_instr_count, section_name, "execute", True)
         # ===================================== DLL CHECK =====================================
+        asid = panda.current_asid(env)
         if dll_activated and pe_infos.headers:
-            #get the address of the function right after getprocaddress returns
-            if pc == ret_addr:
+            if pc == GetProcAddress_ret_addr:
                 func_addr = panda.arch.get_retval(env, convention="syscall")
-                dynamic_dll.add_dll_method(func_name, func_addr)
-                print("GetProcAddress", func_name, hex(func_addr))
-            #address of a known external function
+                dynamic_dll.add_dll_method(GetProcAddress_func_name, func_addr, asid)
+                print("GetProcAddress", GetProcAddress_func_name, hex(func_addr))
+            elif pc == LoadLibrary_ret_addr:
+                func_addr = panda.arch.get_retval(env, convention="syscall")
+                dynamic_dll.add_dll(LoadLibrary_func_name, func_addr)
+                print("LoadLibrary", LoadLibrary_func_name, hex(func_addr))
             if pc in discovered_dll.dll.keys() and old_pc >> 28 != 0:
                 function_name = discovered_dll.get_dll_method_name_from_addr(pc)
                 current_position = f"INTERNAL_CALL({function_name})"
                 function_name = function_name.split('-')[0]
                 dll_analysis.increase_call_nbr("internal", function_name)
-                #print(f"(BLOCK_EXEC) DETECTED DLL AT PC {hex(pc)} FROM {hex(old_pc)} (Detected position: {current_position})", flush=True)
-            if is_known_dll_addr(pc) and old_pc >> 28 == 0:
+            if old_pc >> 28 == 0:
                 function_name = ""
-                if pc in pe_infos.imports.values():  # If current addr correspond to a DLL method call addr
-                    function_name = pe_infos.get_import_name_from_addr(pc)
-                    if dynamic_dll.get_dll_from_addr(pc):
-                        dynamic_function_name = dynamic_dll.get_dll_from_addr(pc)
-                        if function_name != dynamic_function_name:  # Address of an IAT function modified by the packer
-                            dll_analysis.iat_address_modified(function_name, dynamic_function_name)
-                    current_position = f"IAT_CALL({function_name})"
-                    dll_analysis.increase_call_nbr("iat", function_name)
-                elif dynamic_dll.get_dll_from_addr(pc):
-                    function_name = dynamic_dll.get_dll_from_addr(pc)
+                if dynamic_dll.get_dll_from_addr(pc, asid): 
+                    function_name = dynamic_dll.get_dll_from_addr(pc, asid)
                     current_position = f"DYNAMIC_CALL({function_name})"
                     dll_analysis.increase_call_nbr("dynamic", function_name)
+                elif pc in pe_infos.imports.values() and asid == original_asid:
+                    function_name = pe_infos.get_import_name_from_addr(pc)
+                    current_position = f"IAT_CALL({function_name})"
+                    dll_analysis.increase_call_nbr("iat", function_name)
                 elif pc in discovered_dll.dll.keys():
                     function_name = discovered_dll.get_dll_method_name_from_addr(pc)
                     current_position = f"DISCOVERED_CALL({function_name})"
                     function_name = function_name.split('-')[0]
                     dll_analysis.increase_call_nbr("discovered", function_name)
-                syscall_result = syscall_interpreter.read_usercall(env, function_name)
-                if syscall_result is not None:
-                    if function_name == "GetProcAddress":
-                        ret_addr = syscall_result["ret"]
-                        func_name = syscall_result["name"]
-                    elif "LoadLibrary" in function_name:
-                        print("LoadLibrary", syscall_result["name"])
-                        dynamic_dll.add_dll(syscall_result["name"])
-                if is_debug:
+                if "GetProcAddress" in function_name:
+                    syscall_result = syscall_interpreter.read_usercall(env, function_name)
+                    GetProcAddress_ret_addr = syscall_result["ret"]
+                    GetProcAddress_func_name = syscall_result["name"]
+                elif "LoadLibrary" in function_name or "GetModuleHandle" in function_name:
+                    syscall_result = syscall_interpreter.read_usercall(env, function_name)
+                    LoadLibrary_ret_addr = syscall_result["ret"]
+                    LoadLibrary_func_name = syscall_result["name"]
+                if is_debug and function_name != "":
                     print(f"(BLOCK_EXEC) DETECTED DLL AT PC {hex(pc)} FROM {hex(old_pc)} (Detected position: {current_position})", flush=True)
         # =================================== ENTROPY CHECK ===================================
         if entropy_activated and pe_infos.headers:
@@ -179,7 +182,6 @@ def before_block_exec(env, tb):
                         entropy_activated = False
                     if current_section is not None:
                         current_position = f"SECTION({current_section})"
-
                     if is_debug:
                         print(f"(BLOCK_EXEC) MEASURED ENTROPY AT PC {hex(pc)} (Detected position: {current_position}, {panda.current_asid(env)})", flush=True)
             block_num += 1
@@ -221,7 +223,7 @@ def before_block_exec(env, tb):
                 section_name = pe_infos.get_section_from_addr(pc)
                 print(f"(BLOCK_EXEC) FOUND PREVIOUSLY WRITTEN ADDR BEING EXECUTED! PC: {hex(pc)} | Section: {section_name}", flush=True)
     # ====================================================================================
-    if not force_complete_replay and not entropy_activated and not memcheck_activated and not dll_activated and not section_activated and not first_bytes_activated and not count_instr_activated:
+    if not (force_complete_replay or entropy_activated or memcheck_activated or dll_activated or section_activated or first_bytes_activated or count_instr_activated):
         try:
             panda.end_replay()
         except:
@@ -232,20 +234,15 @@ def before_block_exec(env, tb):
 def on_all_sys_enter2(env, pc, call, rp):
     # ===================================== DLL CHECK =====================================
     # ==================================== PERMS CHECK ====================================
-    if dll_activated or section_activated:
-        if panda.current_asid(env) == sample_asid:
+    if section_activated:
+        if panda.current_asid(env) in sample_asid:
             if call != panda.ffi.NULL:
                 syscall_name = panda.ffi.string(call.name).decode()
                 for arg_idx in range(call.nargs):
                     try:
                         arg_name = panda.ffi.string(call.argn[arg_idx])
                         arg_val = panda.arch.get_arg(env, arg_idx + 1, convention='cdecl')  # +1 because idx 0 is syscall number
-                        print(syscall_name, call.argt[arg_idx], arg_name, arg_val, hex(arg_val), flush=True)
                         syscall_result = syscall_interpreter.read_syscall(env, syscall_name, arg_name.decode(), arg_val)
-                        print(f"{syscall_name} {arg_name.decode()}: {syscall_result}")
-                        if dll_activated:
-                            if syscall_name == "NtOpenSection" and arg_name.decode() == "ObjectAttributes":
-                                dynamic_dll.add_dll(syscall_result)
                         if section_activated:
                             if syscall_name == "NtProtectVirtualMemory":
                                 if arg_name.decode() == "BaseAddress":
@@ -269,45 +266,42 @@ def on_all_sys_enter2(env, pc, call, rp):
 
 @panda.cb_asid_changed()
 def asid_changed(env, old_asid, new_asid):
-    global sample_pid, sample_asid, sample_not_found_counter
-    if len(sample_asid) == 0 or (old_asid in sample_asid or new_asid in sample_asid):
-        current_process = panda.plugins['osi'].get_current_process(env)
-        process_name = ffi.string(current_process.name).decode()
-        if "cmd" in process_name and current_process.pid not in sample_pid:
+    global sample_pid, sample_asid, sample_not_found_counter, processes
+    current_process = panda.plugins['osi'].get_current_process(env)
+    process_name = ffi.string(current_process.name).decode()
+    if len(sample_pid) == 0:
+        if "cmd" in process_name:
             print(f"INITIAL CMD FOUND: {process_name} ({current_process.pid} - {current_process.ppid})", flush=True)
             sample_pid.add(current_process.pid)
-        elif current_process.ppid in sample_pid and current_process.pid not in sample_pid:
-            sample_pid.add(current_process.pid)
-            sample_asid.add(new_asid)
-            print(f"SAMPLE FOUND: {process_name} ({current_process.pid} - {current_process.ppid}) ({old_asid} {new_asid} | {sample_asid})", flush=True)
-            if not panda.is_callback_enabled("before_block_exec"):
-                if memcheck_activated or section_activated:
-                    panda.enable_memcb()
-                    panda.enable_callback("virt_mem_after_write")
-                    if section_activated:
-                        panda.enable_callback("virt_mem_after_read")
-                panda.enable_callback("before_block_exec")
-        elif len(sample_asid) > 0:
-            processes = panda.get_processes(env)
-            found = False
-            for process in processes:
-                if "sample" in ffi.string(process.name).decode():
-                    found = True
-                    sample_not_found_counter = 0
-                    break
-            if not found:
-                sample_not_found_counter += 1
-                if sample_not_found_counter > 50:
-                    print("SAMPLE NOT FOUND ANYMORE")
-                    try:
-                        panda.end_replay()
-                    except:
-                        pass
+    elif current_process.ppid in sample_pid and current_process.pid not in sample_pid:
+        sample_pid.add(current_process.pid)
+        sample_asid[new_asid] = current_process.pid
+        processes[current_process.pid] = process_name
+        print(f"SAMPLE FOUND: {process_name} ({current_process.pid} - {current_process.ppid}) ({hex(old_asid)} {hex(new_asid)})", flush=True)
+        if not panda.is_callback_enabled("before_block_exec"):
+            panda.enable_callback("before_block_exec")
+            if memcheck_activated or section_activated:
+                panda.enable_memcb()
+                panda.enable_callback("virt_mem_after_write")
+                if section_activated:
+                    panda.enable_callback("virt_mem_after_read")
+    if False:
+        processes = panda.get_processes(env)
+        found = False
+        for process in processes:
+            if "sample" in ffi.string(process.name).decode(): # changer pour match les pid et pas le nom car le nom peut changer
+                found = True
+                sample_not_found_counter = 0
+                break
+        if not found:
+            sample_not_found_counter += 1
+            if sample_not_found_counter > 50:
+                print("SAMPLE NOT FOUND ANYMORE")
+                try:
+                    panda.end_replay()
+                except:
+                    pass
     return 0
-
-
-def is_known_dll_addr(addr):
-    return addr in pe_infos.imports.values() or dynamic_dll.get_dll_from_addr(addr) is not None or addr in discovered_dll.dll.keys()
 
 
 if __name__ == "__main__":
@@ -342,7 +336,6 @@ if __name__ == "__main__":
                           "GetProcAddress": dynamic_dll.get_dlls_name(),
                           "modified_iat": dynamic_dll.iat_modified,
                           "calls": dll_analysis.get_function_calls()}
-                          
                 with open(f"{malware_hash}_result.pickle", "wb") as f:
                     pickle.dump(result, f, protocol=pickle.HIGHEST_PROTOCOL)
                 sys.exit(0)
