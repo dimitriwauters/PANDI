@@ -15,17 +15,16 @@ services:
       - "./.debug:/debug"
       - "./replay:/replay"
     environment:
-      - panda_debug=True
+      - panda_debug=False
       - panda_max_parallel_execution=1
       - panda_memcheck=False
-      - panda_entropy=False
-      - panda_dll=True
-      - panda_dll_discover=True
+      - panda_entropy=True
+      - panda_dll=False
+      - panda_dll_discover=False
       - panda_section_perms=False
       - panda_first_bytes=False
       - panda_count_instr=False
       #- panda_executable=upx_ADExplorer.exe
-      - max_memory_write_exe_list_length=500
       #- panda_timeout=3600
-    command: "python3 /addon/read_replay.py /payload 22c91058024b82e30c0b63571122e9c107b6e1d760c3cfaa4d7cbd.exe"
+    #command: "python3 /addon/read_replay.py /payload 22c91058024b82e30c0b63571122e9c107b6e1d760c3cfaa4d7cbd.exe"
     #command: "python3 /addon/discover_dlls.py"

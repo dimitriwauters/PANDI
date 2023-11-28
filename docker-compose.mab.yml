@@ -1,0 +1,16 @@
+version: "3.3"
+services:
+  mab-malware:
+    build:
+      context: ./mab-malware
+      dockerfile: Dockerfile
+    working_dir: "/root/MAB-malware/"
+    command: python3 run_attack.py
+    volumes:
+      - "./mab-malware/samples:/root/MAB-malware/data/malware"
+      - "./mab-malware/output/${MODEL_NAME}/evasive:/root/MAB-malware/output/evasive"
+      - "./mab-malware/output/${MODEL_NAME}/minimal:/root/MAB-malware/output/minimal"
+      - "./mab-malware/log:/root/MAB-malware/log"
+      - "./mab-malware/models:/root/MAB-malware/models/pandi"
+    environment:
+      - MODEL=$MODEL
