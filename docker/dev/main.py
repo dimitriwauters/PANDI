@@ -94,31 +94,14 @@ class ProcessSample:
             return False
 
     def get_result(self):
-        name_re = re.split('\.exe', self.malware_sample, flags=re.IGNORECASE)[0]
         panda_output_dict = None
         error = False
         if os.path.isfile(f"{self.malware_hash}_result.pickle"):
             with open(f"{self.malware_hash}_result.pickle", "rb") as f:
                 panda_output_dict = pickle.load(f)
         if panda_output_dict:
-            if memcheck_activated:
-                self.memcheck(panda_output_dict)
-            if entropy_activated:
-                self.entropy(panda_output_dict)
-                self.need_ml = True
-            if dll_activated:
-                self.dll(panda_output_dict)
-                self.need_ml = True
-            if sections_activated:
-                self.sections(panda_output_dict)
-                self.need_ml = True
-            if first_bytes_activated:
-                self.first_bytes(panda_output_dict)
-                self.need_ml = True
-            if count_instr_activated:
-                self.count_instr(panda_output_dict)
-            if first_bytes_activated and dll_activated and entropy_activated:
-                self.execute_machine_learning()
+            for elem in panda_output_dict["syscalls"]:
+                print(elem)
         else:
             error = True
         if not error:
@@ -132,7 +115,7 @@ class ProcessSample:
         write_output_file(self.malware_sample, "", "result", {"is_packed": self.is_packed,
                                                               "error_during_analysis": error,
                                                               "has_timeout": self.timeout_expired})
-        shutil.move(f"/replay/{self.malware_hash}_screenshot", f"/output/{name_re}/screenshot")
+        # shutil.move(f"/replay/{self.malware_hash}_screenshot", f"/output/{self.malware_sample}/screenshot")
         return self.is_packed
 
     def clean(self):
@@ -253,8 +236,8 @@ if __name__ == "__main__":
     initial_cleaning()
     print_info("++ Launching")
     if force_executable is None:
-        already_analysed = [f"{name.lower()}.exe" for name in os.listdir("/output")]
-        files_to_analyse = [os.path.join(root, name) for root, dirs, files in os.walk("/payload") for name in files if name.lower().endswith(".exe") and name.lower() not in already_analysed]
+        already_analysed = [f"{name.lower()}" for name in os.listdir("/output")]
+        files_to_analyse = [os.path.join(root, name) for root, dirs, files in os.walk("/payload") for name in files if name.lower() not in already_analysed]
     else:
         files_to_analyse = [force_executable]
     q = Queue(len(files_to_analyse))
