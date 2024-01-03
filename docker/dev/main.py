@@ -52,20 +52,15 @@ class ProcessSample:
             has_failed = False
             with thread_lock:  # Blocking state when running VM, only one VM can run at anytime
                 print_info(f"  -- Starting processing file '{self.malware_sample_path}/{self.malware_sample}'")
-                subprocess.run(["genisoimage", "-max-iso9660-filenames", "-RJ", "-o", "/payload.iso"] + [f"{self.malware_sample_path}/{self.malware_sample}", "/dll"], capture_output=True)
                 has_failed = has_failed + self.__run_subprocess("run_panda", [self.malware_sample], to=600)
             if not has_failed and not self.timeout_expired:
                 time.sleep(2)
-                if dll_discover_activated:
-                    has_failed = has_failed + self.__run_subprocess("discover_dlls", [self.malware_hash])
+                self.start_time = time.time()
+                has_failed = has_failed + self.__run_subprocess("read_replay", [self.malware_sample_path, self.malware_sample], timeout)
                 if not has_failed:
-                    time.sleep(2)
-                    self.start_time = time.time()
-                    has_failed = has_failed + self.__run_subprocess("read_replay", [self.malware_sample_path, self.malware_sample], timeout)
-                    if not has_failed:
-                        self.end_time = time.time()
-                        self.time_took = self.end_time - self.start_time
-                        return True
+                    self.end_time = time.time()
+                    self.time_took = self.end_time - self.start_time
+                    return True
             print_info(f"  !! An error occurred when processing file '{self.malware_sample_path}/{self.malware_sample}': try {i+1} of {MAX_TRIES}")
         return False
 
